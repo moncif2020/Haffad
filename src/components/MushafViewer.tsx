@@ -12,6 +12,7 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [isFullyDownloaded, setIsFullyDownloaded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // Search state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -157,12 +158,33 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
     }
   };
 
-  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [mouseStartX, setMouseStartX] = useState<number | null>(null);
+  const [mouseStartY, setMouseStartY] = useState<number | null>(null);
 
   const minSwipeDistance = 50;
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      if (e.key === 'ArrowLeft') {
+        handlePrevPage();
+      } else if (e.key === 'ArrowRight') {
+        handleNextPage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPage]);
+
   const onTouchStart = (e: React.TouchEvent) => {
-    setTouchStart(e.targetTouches[0].clientX);
+    setTouchStartX(e.targetTouches[0].clientX);
+    setTouchStartY(e.targetTouches[0].clientY);
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
@@ -170,22 +192,56 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
   };
 
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart) return;
+    if (touchStartX === null || touchStartY === null) return;
     
     const touchEndX = e.changedTouches[0].clientX;
-    const distance = touchStart - touchEndX;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const distanceX = touchStartX - touchEndX;
+    const distanceY = touchStartY - touchEndY;
 
-    if (isLeftSwipe) {
-      // Swiped left (finger moved left) -> Go to previous page (RTL)
-      handlePrevPage();
-    } else if (isRightSwipe) {
-      // Swiped right (finger moved right) -> Go to next page (RTL)
-      handleNextPage();
+    // Only trigger horizontal swipe if horizontal movement is greater than vertical movement
+    if (Math.abs(distanceX) > Math.abs(distanceY) && Math.abs(distanceX) > minSwipeDistance) {
+      if (distanceX > 0) {
+        handlePrevPage();
+      } else {
+        handleNextPage();
+      }
     }
     
-    setTouchStart(null);
+    setTouchStartX(null);
+    setTouchStartY(null);
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    setMouseStartX(e.clientX);
+    setMouseStartY(e.clientY);
+  };
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    if (mouseStartX === null || mouseStartY === null) return;
+    
+    const mouseEndX = e.clientX;
+    const mouseEndY = e.clientY;
+    
+    const distanceX = mouseStartX - mouseEndX;
+    const distanceY = mouseStartY - mouseEndY;
+
+    if (Math.abs(distanceX) > Math.abs(distanceY) && Math.abs(distanceX) > minSwipeDistance) {
+      if (distanceX > 0) {
+        handlePrevPage();
+      } else {
+        handleNextPage();
+      }
+    }
+    
+    setMouseStartX(null);
+    setMouseStartY(null);
+  };
+
+  const onMouseLeave = () => {
+    setMouseStartX(null);
+    setMouseStartY(null);
   };
 
   const handleSearch = () => {
@@ -204,11 +260,43 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
 
   return (
     <div 
-      className="flex flex-col items-center justify-center w-full h-full bg-[#f4f1ea] p-4 relative touch-pan-y"
+      className="flex flex-col items-center justify-center w-full h-full bg-[#f4f1ea] p-4 relative touch-pan-y select-none"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onMouseDown={onMouseDown}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
     >
+      {/* Fullscreen Overlay */}
+      {isFullscreen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black overflow-y-auto overflow-x-hidden touch-pan-y"
+          onClick={() => setIsFullscreen(false)}
+        >
+          {isLoading && (
+            <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
+          <div className="min-h-full w-full flex items-center justify-center">
+            {imageSrc && (
+              <img
+                src={imageSrc}
+                alt={`صفحة ${currentPage} من المصحف`}
+                className="w-full h-auto sm:max-w-2xl md:max-w-3xl lg:max-w-4xl object-contain"
+                dir="rtl"
+              />
+            )}
+          </div>
+          <button 
+            className="fixed top-4 right-4 z-50 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+            onClick={(e) => { e.stopPropagation(); setIsFullscreen(false); }}
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      )}
       {/* Search Modal */}
       {isSearchOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl">
@@ -318,48 +406,35 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
           <img
             src={imageSrc}
             alt={`صفحة ${currentPage} من المصحف`}
-            className="w-full h-auto max-h-[70vh] object-contain"
+            className="w-full h-auto max-h-[70vh] object-contain cursor-pointer transition-transform hover:scale-[1.02]"
             onLoad={() => setIsLoading(false)}
             onError={() => setIsLoading(false)}
+            onClick={() => setIsFullscreen(true)}
             dir="rtl"
           />
         )}
       </div>
 
       <div className="w-full max-w-2xl mt-4 flex flex-col gap-3" dir="rtl">
-        <button
-          onClick={downloadAllPages}
-          disabled={downloadProgress !== null || isFullyDownloaded}
-          className={`flex items-center justify-center gap-2 p-3 rounded-xl font-bold transition-colors ${
-            isFullyDownloaded 
-              ? 'bg-emerald-100 text-emerald-700' 
-              : 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400'
-          }`}
-        >
-          {isFullyDownloaded ? (
-            <>
-              <CheckCircle2 className="w-5 h-5" />
-              <span>المصحف متاح بدون إنترنت</span>
-            </>
-          ) : downloadProgress !== null ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>جاري التحميل... {downloadProgress}%</span>
-            </>
-          ) : (
-            <>
-              <Download className="w-5 h-5" />
-              <span>تحميل المصحف كاملاً للقراءة بدون إنترنت</span>
-            </>
-          )}
-        </button>
-
-        <div className="flex items-start gap-2 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-          <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-          <p className="font-arabic leading-relaxed">
-            ملاحظة: تم استخدام صور مصحف مجمع الملك فهد برواية ورش لعدم توفر واجهة برمجية مفتوحة المصدر لصور "المصحف المحمدي" الرسمي. هذه النسخة دقيقة وموثوقة ومطابقة لقواعد التجويد والرسم العثماني برواية ورش.
-          </p>
-        </div>
+        {!isFullyDownloaded && (
+          <button
+            onClick={downloadAllPages}
+            disabled={downloadProgress !== null}
+            className="flex items-center justify-center gap-2 p-3 rounded-xl font-bold transition-colors bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400"
+          >
+            {downloadProgress !== null ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>جاري التحميل... {downloadProgress}%</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-5 h-5" />
+                <span>تحميل المصحف كاملاً للقراءة بدون إنترنت</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

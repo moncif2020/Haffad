@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80" />
+      <stop offset="100%" stop-color="#166534" />
+    </linearGradient>
+    <linearGradient id="bookGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fef3c7" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Book Base -->
+  <path d="M 60 280 Q 120 250 200 280 Q 280 250 340 280 L 320 320 Q 280 290 200 320 Q 120 290 80 320 Z" fill="url(#bookGrad)" />
+  <path d="M 70 270 Q 120 240 200 270 Q 280 240 330 270 L 340 280 Q 280 250 200 280 Q 120 250 60 280 Z" fill="#fef3c7" />
+  
+  <!-- Pages -->
+  <path d="M 80 180 Q 120 150 200 180 L 200 270 Q 120 240 70 270 Z" fill="#fffbeb" stroke="#d97706" stroke-width="2" />
+  <path d="M 320 180 Q 280 150 200 180 L 200 270 Q 280 240 330 270 Z" fill="#fffbeb" stroke="#d97706" stroke-width="2" />
+  
+  <!-- Center Line -->
+  <line x1="200" y1="180" x2="200" y2="280" stroke="#d97706" stroke-width="4" />
+  
+  <!-- Wreath Left -->
+  <path d="M 80 220 C 40 160 60 80 120 40 C 150 20 180 20 200 30" fill="none" stroke="url(#leafGrad)" stroke-width="6" stroke-linecap="round" />
+  <!-- Leaves Left -->
+  <path d="M 80 180 Q 60 160 80 140 Q 100 160 80 180" fill="url(#leafGrad)" />
+  <path d="M 70 140 Q 60 110 90 100 Q 100 130 70 140" fill="url(#leafGrad)" />
+  <path d="M 90 90 Q 90 60 120 60 Q 120 90 90 90" fill="url(#leafGrad)" />
+  <path d="M 130 50 Q 140 20 170 30 Q 160 60 130 50" fill="url(#leafGrad)" />
+  
+  <!-- Wreath Right -->
+  <path d="M 320 220 C 360 160 340 80 280 40 C 250 20 220 20 200 30" fill="none" stroke="url(#leafGrad)" stroke-width="6" stroke-linecap="round" />
+  <!-- Leaves Right -->
+  <path d="M 320 180 Q 340 160 320 140 Q 300 160 320 180" fill="url(#leafGrad)" />
+  <path d="M 330 140 Q 340 110 310 100 Q 300 130 330 140" fill="url(#leafGrad)" />
+  <path d="M 310 90 Q 310 60 280 60 Q 280 90 310 90" fill="url(#leafGrad)" />
+  <path d="M 270 50 Q 260 20 230 30 Q 240 60 270 50" fill="url(#leafGrad)" />
+  
+  <!-- Top Center Flower/Leaf -->
+  <path d="M 200 20 Q 180 0 200 -20 Q 220 0 200 20" fill="url(#leafGrad)" />
+  
+  <!-- Arabic Text (حُفّاظ) Simplified Path -->
+  <g transform="translate(130, 200) scale(0.6)" fill="#166534">
+    <!-- ح -->
+    <path d="M 20 40 Q 40 20 60 20 Q 80 20 80 40 Q 80 60 60 60 L 20 60" fill="none" stroke="#166534" stroke-width="8" stroke-linecap="round" />
+    <!-- ف -->
+    <circle cx="100" cy="40" r="15" fill="none" stroke="#166534" stroke-width="8" />
+    <line x1="100" y1="55" x2="100" y2="60" stroke="#166534" stroke-width="8" />
+    <circle cx="100" cy="10" r="5" fill="#166534" />
+    <!-- ا -->
+    <line x1="140" y1="10" x2="140" y2="60" stroke="#166534" stroke-width="8" stroke-linecap="round" />
+    <!-- ظ -->
+    <path d="M 170 60 L 220 60 Q 240 60 240 40 Q 240 20 220 20 L 170 20 Z" fill="none" stroke="#166534" stroke-width="8" stroke-linejoin="round" />
+    <line x1="190" y1="10" x2="190" y2="60" stroke="#166534" stroke-width="8" stroke-linecap="round" />
+    <circle cx="230" cy="10" r="5" fill="#166534" />
+    
+    <!-- Tashkeel (Diacritics) -->
+    <!-- Damma on ح -->
+    <path d="M 40 0 Q 50 -10 40 -20 Q 30 -10 40 0" fill="#166534" />
+    <!-- Shadda on ف -->
+    <path d="M 90 -5 Q 95 -15 100 -5 Q 105 -15 110 -5" fill="none" stroke="#166534" stroke-width="3" />
+  </g>
+</svg>
