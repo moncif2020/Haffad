@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Info, Download, CheckCircle2, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Download, CheckCircle2, Search, X, Headphones, Play, Loader2 } from 'lucide-react';
 import quranMetadata from '../data/quran-metadata.json';
+import { useAudio } from '../AudioContext';
+import { fetchAyahs, getAudioUrl } from '../lib/quran';
 
 interface MushafViewerProps {
   initialPage?: number;
@@ -168,6 +170,9 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.key === 'Enter' && isSearchOpen) {
+          handleSearch();
+        }
         return;
       }
       
@@ -175,12 +180,16 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
         handlePrevPage();
       } else if (e.key === 'ArrowRight') {
         handleNextPage();
+      } else if (e.key === 'f' || e.key === 'F') {
+        setIsFullscreen(!isFullscreen);
+      } else if (e.key === 's' || e.key === 'S') {
+        setIsSearchOpen(true);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage]);
+  }, [currentPage, isSearchOpen, isFullscreen, selectedSurah, selectedAyah]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     setTouchStartX(e.targetTouches[0].clientX);
@@ -258,9 +267,96 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
 
   const currentSurahData = quranMetadata.find(s => s.number === selectedSurah);
 
+  const { 
+    startNewPlaylist, 
+    isPlaying, 
+    isLoading: isAudioLoading,
+    reciter,
+    repetitions,
+    rangeRepetitions,
+    stop: stopAudio,
+    playlist,
+    currentTrackIndex
+  } = useAudio();
+
+  // Sync Mushaf with playing audio
+  useEffect(() => {
+    if (isPlaying && currentTrackIndex !== -1 && playlist[currentTrackIndex]) {
+      const currentTrack = playlist[currentTrackIndex];
+      if (currentTrack.surah && currentTrack.ayah) {
+        const surahData = quranMetadata.find(s => s.number === currentTrack.surah);
+        if (surahData) {
+          const page = surahData.ayahPages[currentTrack.ayah - 1];
+          if (page && page !== currentPage) {
+            setCurrentPage(page);
+          }
+        }
+      }
+    }
+  }, [isPlaying, currentTrackIndex, playlist, currentPage]);
+
+  const [isPageLoading, setIsPageLoading] = useState(false);
+
+  const listenToPage = async () => {
+    setIsPageLoading(true);
+    try {
+      // Find all ayahs on this page
+      const pageAyahs: {surah: number, ayah: number}[] = [];
+      
+      quranMetadata.forEach(surah => {
+        surah.ayahPages.forEach((page, index) => {
+          if (page === currentPage) {
+            pageAyahs.push({ surah: surah.number, ayah: index + 1 });
+          }
+        });
+      });
+
+      if (pageAyahs.length === 0) {
+        setIsPageLoading(false);
+        return;
+      }
+
+      // Group by surah to fetch text
+      const surahsToFetch = Array.from(new Set(pageAyahs.map(a => a.surah)));
+      const allAyahsData: any[] = [];
+
+      for (const surahNum of surahsToFetch) {
+        const ayahsInSurah = pageAyahs.filter(a => a.surah === surahNum);
+        const minAyah = Math.min(...ayahsInSurah.map(a => a.ayah));
+        const maxAyah = Math.max(...ayahsInSurah.map(a => a.ayah));
+        
+        const data = await fetchAyahs(surahNum, minAyah, maxAyah);
+        allAyahsData.push(...data.ayahs.map((a: any) => ({
+          ...a,
+          surahNum
+        })));
+      }
+
+      const newPlaylist: any[] = [];
+      for (let j = 0; j < rangeRepetitions; j++) {
+        allAyahsData.forEach(ayah => {
+          for (let i = 0; i < repetitions; i++) {
+            newPlaylist.push({
+              url: getAudioUrl(reciter, ayah.surahNum, ayah.numberInSurah),
+              text: ayah.text,
+              surah: ayah.surahNum,
+              ayah: ayah.numberInSurah
+            });
+          }
+        });
+      }
+
+      startNewPlaylist(newPlaylist, 0);
+    } catch (e) {
+      console.error("Failed to start page audio", e);
+    } finally {
+      setIsPageLoading(false);
+    }
+  };
+
   return (
     <div 
-      className="flex flex-col items-center justify-center w-full h-full bg-[#f4f1ea] p-4 relative touch-pan-y select-none"
+      className="flex flex-col items-center justify-center w-full h-full bg-[#f4f1ea] p-2 sm:p-4 relative touch-pan-y select-none"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -279,21 +375,22 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
               <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
           )}
-          <div className="min-h-full w-full flex items-center justify-center">
+          <div className="min-h-full w-full flex items-center justify-center p-2">
             {imageSrc && (
               <img
                 src={imageSrc}
                 alt={`صفحة ${currentPage} من المصحف`}
-                className="w-full h-auto sm:max-w-2xl md:max-w-3xl lg:max-w-4xl object-contain"
+                className="w-full h-auto max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl object-contain shadow-2xl"
                 dir="rtl"
               />
             )}
           </div>
           <button 
-            className="fixed top-4 right-4 z-50 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+            className="fixed top-4 right-4 z-50 bg-black/50 text-white p-3 rounded-full hover:bg-black/70 focus:ring-4 focus:ring-emerald-500 outline-none transition-all"
             onClick={(e) => { e.stopPropagation(); setIsFullscreen(false); }}
+            aria-label="إغلاق ملء الشاشة"
           >
-            <X className="w-6 h-6" />
+            <X className="w-8 h-8" />
           </button>
         </div>
       )}
@@ -305,9 +402,9 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
               <h3 className="text-xl font-bold font-arabic text-gray-800">البحث عن آية</h3>
               <button 
                 onClick={() => setIsSearchOpen(false)}
-                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors focus:ring-2 focus:ring-emerald-500 outline-none"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
             
@@ -320,7 +417,7 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
                     setSelectedSurah(Number(e.target.value));
                     setSelectedAyah(1); // Reset ayah when surah changes
                   }}
-                  className="p-3 border border-gray-200 rounded-xl font-arabic text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="p-4 border-2 border-gray-100 rounded-xl font-arabic text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50"
                 >
                   {quranMetadata.map(surah => (
                     <option key={surah.number} value={surah.number}>
@@ -335,7 +432,7 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
                 <select 
                   value={selectedAyah}
                   onChange={(e) => setSelectedAyah(Number(e.target.value))}
-                  className="p-3 border border-gray-200 rounded-xl font-arabic text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="p-4 border-2 border-gray-100 rounded-xl font-arabic text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50"
                 >
                   {Array.from({ length: currentSurahData?.numberOfAyahs || 0 }, (_, i) => i + 1).map(ayah => (
                     <option key={ayah} value={ayah}>
@@ -347,9 +444,9 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
 
               <button 
                 onClick={handleSearch}
-                className="mt-4 w-full bg-emerald-600 text-white font-bold font-arabic py-3 rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                className="mt-4 w-full bg-emerald-600 text-white font-bold font-arabic py-4 rounded-xl hover:bg-emerald-700 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-2 text-lg shadow-lg shadow-emerald-200"
               >
-                <Search className="w-5 h-5" />
+                <Search className="w-6 h-6" />
                 <span>الذهاب للآية</span>
               </button>
             </div>
@@ -357,31 +454,40 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between w-full max-w-2xl mb-4 bg-white p-3 rounded-xl shadow-sm" dir="rtl">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between w-full max-w-3xl mb-4 bg-white p-2 sm:p-4 rounded-2xl shadow-sm border border-gray-100" dir="rtl">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button
             onClick={handleNextPage}
             disabled={currentPage === totalPages}
-            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50 transition-colors"
+            className="p-3 rounded-xl hover:bg-gray-100 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
             title="الصفحة التالية"
           >
-            <ChevronLeft className="w-6 h-6 text-gray-700" />
+            <ChevronLeft className="w-8 h-8 text-gray-700" />
           </button>
           
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="p-2 rounded-full hover:bg-emerald-50 text-emerald-600 transition-colors"
+            className="p-3 rounded-xl hover:bg-emerald-50 text-emerald-600 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
             title="بحث عن سورة أو آية"
           >
-            <Search className="w-5 h-5" />
+            <Search className="w-7 h-7" />
+          </button>
+
+          <button
+            onClick={listenToPage}
+            disabled={isPageLoading}
+            className={`p-3 rounded-xl transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${isPageLoading || isAudioLoading ? 'text-emerald-400 bg-emerald-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
+            title="استماع لهذه الصفحة"
+          >
+            {isPageLoading || isAudioLoading ? <Loader2 className="w-7 h-7 animate-spin" /> : <Headphones className="w-7 h-7" />}
           </button>
         </div>
         
-        <div className="flex flex-col items-center">
-          <span className="text-lg font-bold text-gray-800 font-arabic">
+        <div className="flex flex-col items-center px-4">
+          <span className="text-xl sm:text-2xl font-bold text-gray-800 font-arabic">
             الصفحة {currentPage}
           </span>
-          <span className="text-xs text-gray-500 font-arabic">
+          <span className="text-xs sm:text-sm text-gray-500 font-arabic">
             رواية ورش عن نافع
           </span>
         </div>
@@ -389,47 +495,53 @@ export function MushafViewer({ initialPage = 1 }: MushafViewerProps) {
         <button
           onClick={handlePrevPage}
           disabled={currentPage === 1}
-          className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50 transition-colors"
+          className="p-3 rounded-xl hover:bg-gray-100 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
           title="الصفحة السابقة"
         >
-          <ChevronRight className="w-6 h-6 text-gray-700" />
+          <ChevronRight className="w-8 h-8 text-gray-700" />
         </button>
       </div>
 
-      <div className="relative w-full max-w-2xl flex-1 flex items-center justify-center bg-white rounded-xl shadow-md overflow-hidden min-h-[60vh]">
+      <div className="relative w-full max-w-3xl flex-1 flex items-center justify-center bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden min-h-[50vh] sm:min-h-[60vh] group">
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-            <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-10">
+            <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         )}
         {imageSrc && (
           <img
             src={imageSrc}
             alt={`صفحة ${currentPage} من المصحف`}
-            className="w-full h-auto max-h-[70vh] object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+            className="w-full h-auto max-h-[75vh] object-contain cursor-pointer transition-transform duration-300 group-hover:scale-[1.01]"
             onLoad={() => setIsLoading(false)}
             onError={() => setIsLoading(false)}
             onClick={() => setIsFullscreen(true)}
             dir="rtl"
           />
         )}
+        
+        {/* TV Navigation Hints (Visible on hover or focus) */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden md:flex">
+          <span className="bg-black/40 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm">استخدم الأسهم للتنقل</span>
+          <span className="bg-black/40 text-white px-3 py-1 rounded-full text-xs backdrop-blur-sm">F للملء</span>
+        </div>
       </div>
 
-      <div className="w-full max-w-2xl mt-4 flex flex-col gap-3" dir="rtl">
+      <div className="w-full max-w-3xl mt-4 flex flex-col gap-3" dir="rtl">
         {!isFullyDownloaded && (
           <button
             onClick={downloadAllPages}
             disabled={downloadProgress !== null}
-            className="flex items-center justify-center gap-2 p-3 rounded-xl font-bold transition-colors bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400"
+            className="flex items-center justify-center gap-3 p-4 rounded-2xl font-bold transition-all bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-4 focus:ring-emerald-300 outline-none disabled:bg-emerald-400 shadow-lg shadow-emerald-100 text-lg"
           >
             {downloadProgress !== null ? (
               <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
                 <span>جاري التحميل... {downloadProgress}%</span>
               </>
             ) : (
               <>
-                <Download className="w-5 h-5" />
+                <Download className="w-6 h-6" />
                 <span>تحميل المصحف كاملاً للقراءة بدون إنترنت</span>
               </>
             )}

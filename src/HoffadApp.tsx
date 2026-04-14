@@ -1,457 +1,100 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, Image as ImageIcon, Video, ShieldCheck } from 'lucide-react';
-import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio } from './lib/quran';
+import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles } from 'lucide-react';
+import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl } from './lib/quran';
 import { MushafViewer } from './components/MushafViewer';
 import { CustomSelect } from './components/CustomSelect';
 import { GoogleGenAI } from "@google/genai";
+import { translations } from './translations';
+import { diff_match_patch } from 'diff-match-patch';
+import { useAudio } from './AudioContext';
+
+import { QRCodeSVG } from 'qrcode.react';
+import { db, auth, storage } from './firebase';
+import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // --- Types ---
-type View = 'garden' | 'study' | 'parent' | 'game' | 'listen' | 'mushaf';
-type Lesson = { id: string; title: string; text: string };
-type Language = 'ar' | 'en' | 'fr' | 'es';
+type View = 'garden' | 'study' | 'parent' | 'game' | 'listen' | 'mushaf' | 'about' | 'upgrade';
+type Lesson = { id: string; title: string; text: string; type?: 'quran' | 'custom' };
+type Language = string;
 
-// --- Translations ---
-const t = {
-  ar: { 
-    garden: 'بستاني', 
-    study: 'المذاكرة', 
-    listen: 'استماع', 
-    settings: 'الإعدادات',
-    currentLevel: 'مستواك الحالي',
-    pointsToNext: 'باقي {points} نقطة للمستوى القادم',
-    fruitsOfGiving: 'ثمار العطاء',
-    donationsCount: '{count} تبرعات',
-    useCoins: 'استخدم عملاتك (ثمار شجرتك) لمساعدة الآخرين ونشر الخير في العالم.',
-    water: 'سقيا ماء',
-    food: 'إطعام مسكين',
-    plantTree: 'زراعة شجرة',
-    coin: 'عملة',
-    goToStudy: 'اذهب للمذاكرة لجمع المزيد من الثمار!',
-    memorizationTasks: 'مهام الحفظ',
-    noTasks: 'لا توجد مهام حالياً. اطلب من والدك إضافة دروس جديدة!',
-    listenAndMemorize: 'التلقين والاستماع',
-    repeatTexts: 'كرر النصوص والآيات لتثبيت الحفظ',
-    quran: 'القرآن الكريم',
-    customTexts: 'نصوص مخصصة',
-    chooseSurah: 'اختر السورة',
-    fromAyah: 'من آية',
-    toAyah: 'إلى آية',
-    reciter: 'القارئ',
-    repetitions: 'عدد التكرارات (لكل آية)',
-    repetitionsPerLine: 'عدد التكرارات (لكل سطر)',
-    rangeRepetitions: 'تكرار المجموعة كاملة',
-    startListening: 'بدء الاستماع والتلقين',
-    textToMemorize: 'النص المراد حفظه',
-    textPlaceholder: 'الصق هنا النص، الحوار، أو القصيدة... (كل سطر سيتم تكراره بشكل منفصل)',
-    textTip: 'نصيحة: افصل بين الجمل الطويلة بـ "سطر جديد" (Enter) ليسهل حفظها.',
-    textLanguage: 'لغة النص (صوت الذكاء الاصطناعي)',
-    arabic: 'العربية (Arabic)',
-    english: 'الإنجليزية (English)',
-    french: 'الفرنسية (French)',
-    spanish: 'الإسبانية (Spanish)',
-    currentRepetition: 'التكرار الحالي للآية: {current} من {total}',
-    currentRangeRepetition: 'تكرار المجموعة: {current} من {total}',
-    parentDashboard: 'لوحة التحكم (للآباء)',
-    addNewTask: 'إضافة مهمة حفظ جديدة',
-    taskTitle: 'عنوان المهمة',
-    taskText: 'النص المراد حفظه',
-    add: 'إضافة',
-    addAyahs: 'إضافة الآيات',
-    currentTasks: 'المهام الحالية',
-    blanks: 'فراغات',
-    order: 'ترتيب',
-    recite: 'تسميع',
-    wellDone: 'أحسنت عملاً!',
-    taskCompleted: 'لقد أنجزت المهمة بنجاح',
-    checkOrder: 'تحقق من الترتيب',
-    smartRecitationChallenge: 'تحدي التسميع الذكي',
-    recitationInstructions: 'اضغط على الزر، اقرأ ما حفظته، وسيقوم التطبيق بتصحيح قراءتك تلقائياً!',
-    stopRecording: 'إيقاف التسجيل',
-    startRecitation: 'بدء التسميع',
-    checkMyRecitation: 'تحقق من حفظي',
-    result: 'النتيجة',
-    excellentRecitation: 'ممتاز! حفظك رائع جداً.',
-    goodTry: 'محاولة جيدة! راجع الكلمات الحمراء وحاول مرة أخرى.',
-    retryRecitation: 'إعادة التسميع',
-    claimReward: 'استلام المكافأة',
-    micNotAllowed: 'الرجاء السماح للمتصفح باستخدام الميكروفون.',
-    browserNotSupported: 'متصفحك الحالي لا يدعم ميزة التعرف على الصوت. يرجى استخدام متصفح Google Chrome.',
-    didNotHear: 'لم أسمع شيئاً، حاول رفع صوتك والتسميع مرة أخرى.',
-    listenAndMemorizeTitle: 'التلقين والاستماع',
-    listenAndMemorizeDesc: 'كرر النصوص والآيات لتثبيت الحفظ',
-    startDictation: 'بدء التلقين',
-    dictationText: 'تلقين النص',
-    errorFetchingAyahs: 'حدث خطأ أثناء جلب الآيات',
-    fillBlanksInstructions: 'أكمل الفراغات بالكلمات الصحيحة',
-    checkAnswer: 'تحقق من الإجابة',
-    someErrorsTryAgain: 'هناك بعض الأخطاء، حاول مرة أخرى!',
-    orderInstructions: 'رتب الجمل لتكوين النص الصحيح',
-    incorrectOrderTryAgain: 'الترتيب غير صحيح، حاول مرة أخرى!',
-    clickSentencesToOrder: 'اضغط على الجمل بالأسفل لترتيبها هنا',
-    checkOrder: 'تحقق من الترتيب',
-    micPermission: 'الرجاء السماح للمتصفح باستخدام الميكروفون.',
-    speechNotSupported: 'متصفحك الحالي لا يدعم ميزة التعرف على الصوت. يرجى استخدام متصفح Google Chrome.',
-    didNotHear: 'لم أسمع شيئاً، حاول رفع صوتك والتسميع مرة أخرى.',
-    smartRecitationChallenge: 'تحدي التسميع الذكي',
-    recitationInstructions: 'اضغط على الزر، اقرأ ما حفظته، وسيقوم التطبيق بتصحيح قراءتك تلقائياً!',
-    stopRecording: 'إيقاف التسجيل',
-    startReciting: 'بدء التسميع',
-    checkMyMemorization: 'تحقق من حفظي',
-    resultScore: 'النتيجة: {score}%',
-    excellentMemorization: 'ممتاز! حفظك رائع جداً.',
-    goodTryReview: 'محاولة جيدة! راجع الكلمات الحمراء وحاول مرة أخرى.',
-    reciteAgain: 'إعادة التسميع',
-    claimReward: 'استلام المكافأة',
-    myApp: 'حُفّاظ',
-    seedOfKnowledge: 'بذرة المعرفة',
-    plantOfCertainty: 'غرسة اليقين',
-    treeOfWisdom: 'شجرة الحكمة',
-    gardenOfGiving: 'بستان العطاء',
-    reachedHighestLevel: 'لقد وصلت لأعلى مستوى!',
-    ayahsRange: '(الآيات {start}-{end})',
-    ayahsAddedSuccessfully: 'تمت إضافة الآيات بنجاح!',
-    errorFetchingAyahsCheckInternet: 'حدث خطأ أثناء جلب الآيات. تأكد من اتصالك بالإنترنت.',
-    loadingSurahs: 'جاري تحميل قائمة السور...',
-    startMemorizing: 'بدء الحفظ',
-    downloadOffline: 'تنزيل للاستماع بدون إنترنت',
-    downloadComplete: 'تم التنزيل بنجاح!',
-    downloadError: 'حدث خطأ أثناء التنزيل',
-    downloading: 'جاري التنزيل... {progress}%',
-  },
-  en: { 
-    garden: 'My Garden', 
-    study: 'Study', 
-    listen: 'Listen', 
-    settings: 'Settings',
-    currentLevel: 'Current Level',
-    pointsToNext: '{points} points to next level',
-    fruitsOfGiving: 'Fruits of Giving',
-    donationsCount: '{count} Donations',
-    useCoins: 'Use your coins (fruits of your tree) to help others and spread goodness in the world.',
-    water: 'Provide Water',
-    food: 'Feed the Needy',
-    plantTree: 'Plant a Tree',
-    coin: 'coins',
-    goToStudy: 'Go study to collect more fruits!',
-    memorizationTasks: 'Memorization Tasks',
-    noTasks: 'No tasks currently. Ask your parent to add new lessons!',
-    listenAndMemorize: 'Listen & Memorize',
-    repeatTexts: 'Repeat texts and verses to solidify memorization',
-    quran: 'Holy Quran',
-    customTexts: 'Custom Texts',
-    chooseSurah: 'Choose Surah',
-    fromAyah: 'From Ayah',
-    toAyah: 'To Ayah',
-    reciter: 'Reciter',
-    repetitions: 'Repetitions (per Ayah)',
-    repetitionsPerLine: 'Repetitions (per line)',
-    rangeRepetitions: 'Repetitions (entire range)',
-    startListening: 'Start Listening',
-    textToMemorize: 'Text to Memorize',
-    textPlaceholder: 'Paste text, dialogue, or poem here... (each line will be repeated separately)',
-    textTip: 'Tip: Separate long sentences with a "new line" (Enter) to make them easier to memorize.',
-    textLanguage: 'Text Language (AI Voice)',
-    arabic: 'Arabic',
-    english: 'English',
-    french: 'French',
-    spanish: 'Spanish',
-    currentRepetition: 'Current Ayah repetition: {current} of {total}',
-    currentRangeRepetition: 'Range repetition: {current} of {total}',
-    parentDashboard: 'Parent Dashboard',
-    addNewTask: 'Add New Task',
-    taskTitle: 'Task Title',
-    taskText: 'Text to Memorize',
-    add: 'Add',
-    addAyahs: 'Add Ayahs',
-    currentTasks: 'Current Tasks',
-    blanks: 'Blanks',
-    order: 'Order',
-    recite: 'Recite',
-    wellDone: 'Well done, champion!',
-    taskCompleted: 'You have successfully completed the task',
-    checkOrder: 'Check Order',
-    smartRecitationChallenge: 'Smart Recitation Challenge',
-    recitationInstructions: 'Press the button, read what you memorized, and the app will correct your reading automatically!',
-    stopRecording: 'Stop Recording',
-    startRecitation: 'Start Recitation',
-    checkMyRecitation: 'Check My Recitation',
-    result: 'Result',
-    excellentRecitation: 'Excellent! Your memorization is great.',
-    goodTry: 'Good try! Review the red words and try again.',
-    retryRecitation: 'Retry Recitation',
-    claimReward: 'Claim Reward',
-    micNotAllowed: 'Please allow the browser to use the microphone.',
-    browserNotSupported: 'Your current browser does not support voice recognition. Please use Google Chrome.',
-    didNotHear: 'I didn\'t hear anything, try raising your voice and reciting again.',
-    listenAndMemorizeTitle: 'Listen & Memorize',
-    listenAndMemorizeDesc: 'Repeat texts and verses to consolidate memorization',
-    startDictation: 'Start Dictation',
-    dictationText: 'Dictation Text',
-    errorFetchingAyahs: 'Error fetching Ayahs',
-    fillBlanksInstructions: 'Fill in the blanks with the correct words',
-    checkAnswer: 'Check Answer',
-    someErrorsTryAgain: 'There are some errors, try again!',
-    orderInstructions: 'Order the sentences to form the correct text',
-    incorrectOrderTryAgain: 'Incorrect order, try again!',
-    clickSentencesToOrder: 'Click the sentences below to order them here',
-    checkOrder: 'Check Order',
-    micPermission: 'Please allow the browser to use the microphone.',
-    speechNotSupported: 'Your current browser does not support speech recognition. Please use Google Chrome.',
-    didNotHear: 'I did not hear anything, try speaking louder and reciting again.',
-    smartRecitationChallenge: 'Smart Recitation Challenge',
-    recitationInstructions: 'Click the button, read what you memorized, and the app will automatically correct your reading!',
-    stopRecording: 'Stop Recording',
-    startReciting: 'Start Reciting',
-    checkMyMemorization: 'Check My Memorization',
-    resultScore: 'Result: {score}%',
-    excellentMemorization: 'Excellent! Your memorization is great.',
-    goodTryReview: 'Good try! Review the red words and try again.',
-    reciteAgain: 'Recite Again',
-    claimReward: 'Claim Reward',
-    myApp: 'Hoffad',
-    seedOfKnowledge: 'Seed of Knowledge',
-    plantOfCertainty: 'Plant of Certainty',
-    treeOfWisdom: 'Tree of Wisdom',
-    gardenOfGiving: 'Garden of Giving',
-    reachedHighestLevel: 'You have reached the highest level!',
-    ayahsRange: '(Ayahs {start}-{end})',
-    ayahsAddedSuccessfully: 'Ayahs added successfully!',
-    errorFetchingAyahsCheckInternet: 'Error fetching Ayahs. Check your internet connection.',
-    loadingSurahs: 'Loading Surahs...',
-    startMemorizing: 'Start Memorizing',
-    downloadOffline: 'Download for offline listening',
-    downloadComplete: 'Download complete!',
-    downloadError: 'Error during download',
-    downloading: 'Downloading... {progress}%',
-  },
-  fr: { 
-    garden: 'Mon Jardin', 
-    study: 'Étudier', 
-    listen: 'Écouter', 
-    settings: 'Paramètres',
-    currentLevel: 'Niveau Actuel',
-    pointsToNext: '{points} points pour le niveau suivant',
-    fruitsOfGiving: 'Fruits du Don',
-    donationsCount: '{count} Dons',
-    useCoins: 'Utilisez vos pièces (fruits de votre arbre) pour aider les autres et répandre le bien dans le monde.',
-    water: 'Fournir de l\'eau',
-    food: 'Nourrir les Nécessiteux',
-    plantTree: 'Planter un Arbre',
-    coin: 'pièces',
-    goToStudy: 'Allez étudier pour récolter plus de fruits !',
-    memorizationTasks: 'Tâches de Mémorisation',
-    noTasks: 'Aucune tâche pour le moment. Demandez à votre parent d\'ajouter de nouvelles leçons !',
-    listenAndMemorize: 'Écouter et Mémoriser',
-    repeatTexts: 'Répétez les textes et les versets pour consolider la mémorisation',
-    quran: 'Saint Coran',
-    customTexts: 'Textes Personnalisés',
-    chooseSurah: 'Choisir la Sourate',
-    fromAyah: 'De la Ayah',
-    toAyah: 'À la Ayah',
-    reciter: 'Récitateur',
-    repetitions: 'Répétitions (par Ayah)',
-    repetitionsPerLine: 'Répétitions (par ligne)',
-    rangeRepetitions: 'Répétitions (plage entière)',
-    startListening: 'Commencer l\'écoute',
-    textToMemorize: 'Texte à Mémoriser',
-    textPlaceholder: 'Collez le texte, le dialogue ou le poème ici... (chaque ligne sera répétée séparément)',
-    textTip: 'Astuce : Séparez les phrases longues par un "saut de ligne" (Entrée) pour faciliter la mémorisation.',
-    textLanguage: 'Langue du Texte (Voix IA)',
-    arabic: 'Arabe',
-    english: 'Anglais',
-    french: 'Français',
-    spanish: 'Espagnol',
-    currentRepetition: 'Répétition actuelle de la Ayah : {current} sur {total}',
-    currentRangeRepetition: 'Répétition de la plage : {current} sur {total}',
-    parentDashboard: 'Tableau de Bord (Parents)',
-    addNewTask: 'Ajouter une Tâche',
-    taskTitle: 'Titre de la Tâche',
-    taskText: 'Texte à Mémoriser',
-    add: 'Ajouter',
-    addAyahs: 'Ajouter Ayahs',
-    currentTasks: 'Tâches Actuelles',
-    blanks: 'Espaces',
-    order: 'Ordre',
-    recite: 'Réciter',
-    wellDone: 'Bien joué, championne !',
-    taskCompleted: 'Vous avez terminé la tâche avec succès',
-    checkOrder: 'Vérifier l\'ordre',
-    smartRecitationChallenge: 'Défi de Récitation Intelligente',
-    recitationInstructions: 'Appuyez sur le bouton, lisez ce que vous avez mémorisé, et l\'application corrigera votre lecture automatiquement !',
-    stopRecording: 'Arrêter l\'enregistrement',
-    startRecitation: 'Commencer la récitation',
-    checkMyRecitation: 'Vérifier ma récitation',
-    result: 'Résultat',
-    excellentRecitation: 'Excellent ! Votre mémorisation est super.',
-    goodTry: 'Bon essai ! Révisez les mots en rouge et réessayez.',
-    retryRecitation: 'Réessayer la récitation',
-    claimReward: 'Réclamer la récompense',
-    micNotAllowed: 'Veuillez autoriser le navigateur à utiliser le microphone.',
-    browserNotSupported: 'Votre navigateur actuel ne prend pas en charge la reconnaissance vocale. Veuillez utiliser Google Chrome.',
-    didNotHear: 'Je n\'ai rien entendu, essayez de parler plus fort et de réciter à nouveau.',
-    listenAndMemorizeTitle: 'Écouter et Mémoriser',
-    listenAndMemorizeDesc: 'Répétez les textes et les versets pour consolider la mémorisation',
-    startDictation: 'Commencer la dictée',
-    dictationText: 'Texte de Dictée',
-    errorFetchingAyahs: 'Erreur lors de la récupération des Ayahs',
-    fillBlanksInstructions: 'Remplissez les espaces avec les mots corrects',
-    checkAnswer: 'Vérifier la réponse',
-    someErrorsTryAgain: 'Il y a quelques erreurs, réessayez !',
-    orderInstructions: 'Ordonnez les phrases pour former le texte correct',
-    incorrectOrderTryAgain: 'Ordre incorrect, réessayez !',
-    clickSentencesToOrder: 'Cliquez sur les phrases ci-dessous pour les ordonner ici',
-    checkOrder: 'Vérifier l\'ordre',
-    micPermission: 'Veuillez autoriser le navigateur à utiliser le microphone.',
-    speechNotSupported: 'Votre navigateur actuel ne prend pas en charge la reconnaissance vocale. Veuillez utiliser Google Chrome.',
-    didNotHear: 'Je n\'ai rien entendu, essayez de parler plus fort et de réciter à nouveau.',
-    smartRecitationChallenge: 'Défi de Récitation Intelligente',
-    recitationInstructions: 'Cliquez sur le bouton, lisez ce que vous avez mémorisé, et l\'application corrigera automatiquement votre lecture !',
-    stopRecording: 'Arrêter l\'enregistrement',
-    startReciting: 'Commencer la récitation',
-    checkMyMemorization: 'Vérifier ma mémorisation',
-    resultScore: 'Résultat : {score}%',
-    excellentMemorization: 'Excellent ! Votre mémorisation est super.',
-    goodTryReview: 'Bon essai ! Révisez les mots rouges et réessayez.',
-    reciteAgain: 'Réciter à nouveau',
-    claimReward: 'Réclamer la récompense',
-    myApp: 'Hoffad',
-    seedOfKnowledge: 'Graine de Connaissance',
-    plantOfCertainty: 'Plante de Certitude',
-    treeOfWisdom: 'Arbre de Sagesse',
-    gardenOfGiving: 'Jardin du Don',
-    reachedHighestLevel: 'Vous avez atteint le niveau le plus élevé !',
-    ayahsRange: '(Ayahs {start}-{end})',
-    ayahsAddedSuccessfully: 'Ayahs ajoutés avec succès !',
-    errorFetchingAyahsCheckInternet: 'Erreur lors de la récupération des Ayahs. Vérifiez votre connexion internet.',
-    loadingSurahs: 'Chargement des Sourates...',
-    startMemorizing: 'Commencer à Mémoriser',
-    downloadOffline: 'Télécharger pour écouter hors ligne',
-    downloadComplete: 'Téléchargement terminé !',
-    downloadError: 'Erreur lors du téléchargement',
-    downloading: 'Téléchargement... {progress}%',
-  },
-  es: { 
-    garden: 'Mi Jardín', 
-    study: 'Estudiar', 
-    listen: 'Escuchar', 
-    settings: 'Ajustes',
-    currentLevel: 'Nivel Actual',
-    pointsToNext: '{points} puntos para el siguiente nivel',
-    fruitsOfGiving: 'Frutos de Dar',
-    donationsCount: '{count} Donaciones',
-    useCoins: 'Usa tus monedas (frutos de tu árbol) para ayudar a otros y difundir el bien en el mundo.',
-    water: 'Proveer Agua',
-    food: 'Alimentar a los Necesitados',
-    plantTree: 'Plantar un Árbol',
-    coin: 'monedas',
-    goToStudy: '¡Ve a estudiar para recolectar más frutos!',
-    memorizationTasks: 'Tareas de Memorización',
-    noTasks: 'No hay tareas actualmente. ¡Pídele a tu padre que agregue nuevas lecciones!',
-    listenAndMemorize: 'Escuchar y Memorizar',
-    repeatTexts: 'Repite textos y versos para consolidar la memorización',
-    quran: 'Sagrado Corán',
-    customTexts: 'Textos Personalizados',
-    chooseSurah: 'Elegir Sura',
-    fromAyah: 'Desde Aleya',
-    toAyah: 'Hasta Aleya',
-    reciter: 'Recitador',
-    repetitions: 'Repeticiones (por Aleya)',
-    repetitionsPerLine: 'Repeticiones (por línea)',
-    rangeRepetitions: 'Repeticiones (rango completo)',
-    startListening: 'Empezar a Escuchar',
-    textToMemorize: 'Texto a Memorizar',
-    textPlaceholder: 'Pega el texto, diálogo o poema aquí... (cada línea se repetirá por separado)',
-    textTip: 'Consejo: Separa las oraciones largas con un "salto de línea" (Enter) para facilitar la memorización.',
-    textLanguage: 'Idioma del Texto (Voz de IA)',
-    arabic: 'Árabe',
-    english: 'Inglés',
-    french: 'Francés',
-    spanish: 'Español',
-    currentRepetition: 'Repetición actual de la Aleya: {current} de {total}',
-    currentRangeRepetition: 'Repetición del rango: {current} de {total}',
-    parentDashboard: 'Panel de Padres',
-    addNewTask: 'Añadir Nueva Tarea',
-    taskTitle: 'Título de la Tarea',
-    taskText: 'Texto a Memorizar',
-    add: 'Añadir',
-    addAyahs: 'Añadir Aleyas',
-    currentTasks: 'Tareas Actuales',
-    blanks: 'Espacios',
-    order: 'Orden',
-    recite: 'Recitar',
-    wellDone: '¡Bien hecho, campeona!',
-    taskCompleted: 'Has completado la tarea con éxito',
-    checkOrder: 'Comprobar Orden',
-    smartRecitationChallenge: 'Desafío de Recitación Inteligente',
-    recitationInstructions: '¡Presiona el botón, lee lo que has memorizado y la aplicación corregirá tu lectura automáticamente!',
-    stopRecording: 'Detener Grabación',
-    startRecitation: 'Iniciar Recitación',
-    checkMyRecitation: 'Comprobar mi Recitación',
-    result: 'Resultado',
-    excellentRecitation: '¡Excelente! Tu memorización es genial.',
-    goodTry: '¡Buen intento! Revisa las palabras en rojo y vuelve a intentarlo.',
-    retryRecitation: 'Reintentar Recitación',
-    claimReward: 'Reclamar Recompensa',
-    micNotAllowed: 'Por favor, permite que el navegador use el micrófono.',
-    browserNotSupported: 'Tu navegador actual no admite el reconocimiento de voz. Por favor, usa Google Chrome.',
-    didNotHear: 'No escuché nada, intenta levantar la voz y recitar de nuevo.',
-    listenAndMemorizeTitle: 'Escuchar y Memorizar',
-    listenAndMemorizeDesc: 'Repite textos y versos para consolidar la memorización',
-    startDictation: 'Iniciar Dictado',
-    dictationText: 'Texto de Dictado',
-    errorFetchingAyahs: 'Error al obtener Ayahs',
-    fillBlanksInstructions: 'Rellena los espacios con las palabras correctas',
-    checkAnswer: 'Comprobar Respuesta',
-    someErrorsTryAgain: '¡Hay algunos errores, inténtalo de nuevo!',
-    orderInstructions: 'Ordena las oraciones para formar el texto correcto',
-    incorrectOrderTryAgain: '¡Orden incorrecto, inténtalo de nuevo!',
-    clickSentencesToOrder: 'Haz clic en las oraciones a continuación para ordenarlas aquí',
-    checkOrder: 'Comprobar Orden',
-    micPermission: 'Por favor, permite que el navegador use el micrófono.',
-    speechNotSupported: 'Tu navegador actual no soporta el reconocimiento de voz. Por favor, usa Google Chrome.',
-    didNotHear: 'No escuché nada, intenta hablar más alto y recitar de nuevo.',
-    smartRecitationChallenge: 'Desafío de Recitación Inteligente',
-    recitationInstructions: '¡Haz clic en el botón, lee lo que memorizaste y la aplicación corregirá automáticamente tu lectura!',
-    stopRecording: 'Detener Grabación',
-    startReciting: 'Empezar a Recitar',
-    checkMyMemorization: 'Comprobar mi Memorización',
-    resultScore: 'Resultado: {score}%',
-    excellentMemorization: '¡Excelente! Tu memorización es genial.',
-    goodTryReview: '¡Buen intento! Revisa las palabras rojas e inténtalo de nuevo.',
-    reciteAgain: 'Recitar de Nuevo',
-    claimReward: 'Reclamar Recompensa',
-    myApp: 'Hoffad',
-    seedOfKnowledge: 'Semilla de Conocimiento',
-    plantOfCertainty: 'Planta de Certeza',
-    treeOfWisdom: 'Árbol de Sabiduría',
-    gardenOfGiving: 'Jardín de Dar',
-    reachedHighestLevel: '¡Has alcanzado el nivel más alto!',
-    ayahsRange: '(Ayahs {start}-{end})',
-    ayahsAddedSuccessfully: '¡Ayahs añadidos con éxito!',
-    errorFetchingAyahsCheckInternet: 'Error al obtener Ayahs. Comprueba tu conexión a internet.',
-    loadingSurahs: 'Cargando Surahs...',
-    startMemorizing: 'Empezar a Memorizar',
-    downloadOffline: 'Descargar para escuchar sin conexión',
-    downloadComplete: '¡Descarga completada!',
-    downloadError: 'Error durante la descarga',
-    downloading: 'Descargando... {progress}%',
+const APP_LANGUAGES = [
+  { code: 'ar', name: 'العربية', dir: 'rtl' },
+  { code: 'en', name: 'English', dir: 'ltr' },
+  { code: 'fr', name: 'Français', dir: 'ltr' },
+  { code: 'es', name: 'Español', dir: 'ltr' },
+  { code: 'zh', name: '中文', dir: 'ltr' },
+  { code: 'hi', name: 'हिन्दी', dir: 'ltr' },
+  { code: 'ur', name: 'اردو', dir: 'rtl' },
+  { code: 'id', name: 'Bahasa Indonesia', dir: 'ltr' },
+  { code: 'tr', name: 'Türkçe', dir: 'ltr' },
+  { code: 'ru', name: 'Русский', dir: 'ltr' },
+  { code: 'it', name: 'Italiano', dir: 'ltr' },
+  { code: 'de', name: 'Deutsch', dir: 'ltr' },
+  { code: 'pt', name: 'Português', dir: 'ltr' },
+  { code: 'ja', name: '日本語', dir: 'ltr' },
+  { code: 'ko', name: '한국어', dir: 'ltr' },
+  { code: 'vi', name: 'Tiếng Việt', dir: 'ltr' },
+  { code: 'th', name: 'ไทย', dir: 'ltr' },
+  { code: 'pl', name: 'Polski', dir: 'ltr' },
+  { code: 'nl', name: 'Nederlands', dir: 'ltr' },
+  { code: 'fa', name: 'فارسی', dir: 'rtl' },
+];
+
+// Proxy to handle all 20 languages with English fallback for both language and specific keys
+const t: any = new Proxy(translations, {
+  get: (target, lang: string) => {
+    const langData = target[lang] || target['en'];
+    return new Proxy(langData, {
+      get: (innerTarget, key: string) => {
+        // Return the translation if it exists in the current language, 
+        // otherwise fall back to the English version of that key, 
+        // and if that's also missing, return an empty string to prevent .replace() errors.
+        return innerTarget[key] || target['en'][key] || '';
+      }
+    });
   }
-};
+});
 
 // --- Helper: Normalize Arabic Text for Comparison ---
 const normalizeArabic = (text: string) => {
   if (!text) return '';
-  return text
-    .replace(/[\u0617-\u061A\u064B-\u0652\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, "") // Remove Tashkeel & Quranic marks
-    .replace(/[أإآ]/g, "ا")
+  
+  // 1. Unicode Normalization (NFC) to handle different character representations
+  let normalized = text.normalize('NFC');
+
+  return normalized
+    // 2. Remove Tatweel (Kashida)
+    .replace(/\u0640/g, "")
+    // 3. Remove all Tashkeel (diacritics)
+    // Range \u064B-\u065F covers Fathatan, Dammatan, Kasratan, Fatha, Damma, Kasra, Shadda, Sukun, Maddah, Hamza above/below
+    .replace(/[\u064B-\u065F]/g, "")
+    // 4. Remove all Quranic marks, small letters, and stop signs
+    // This covers a wide range: \u0610-\u061A, \u06D6-\u06ED, \u0670 (Superscript Alef)
+    .replace(/[\u0610-\u061A\u06D6-\u06ED\u0670]/g, "") 
+    // 5. Normalize all forms of Alef (including Hamzat Wasl ٱ) to a simple Alef ا
+    .replace(/[أإآٱ]/g, "ا")
+    // 6. Normalize Ta'a Marbuta to Ha'a
     .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
+    // 7. Normalize Alif Maksura and Yaa to a single form (Yaa)
+    // This is crucial because STT engines often interchange them at the end of words
+    .replace(/[ىي]/g, "ي")
+    // 8. Normalize Waw with Hamza to simple Waw
     .replace(/ؤ/g, "و")
+    // 9. Normalize Yaa with Hamza to simple Yaa
     .replace(/ئ/g, "ي")
+    // 10. Handle specific Uthmani script spelling variations to match standard spelling
+    .replace(/صلوه/g, "صلاه")
+    .replace(/زكوه/g, "زكاه")
+    .replace(/حيوه/g, "حياه")
+    .replace(/ربوا/g, "ربا")
+    // 11. Remove Ayah markers and numbers
     .replace(/۝/g, "")
-    .replace(/[٠-٩0-9]/g, "") // Remove numbers
-    .replace(/[^\u0600-\u06FF\s]/g, "") // Remove non-Arabic chars
+    .replace(/[٠-٩0-9]/g, "") 
+    // 12. Remove any remaining non-Arabic characters (except spaces)
+    .replace(/[^\u0600-\u06FF\s]/g, "") 
+    // 13. Clean up extra spaces
     .replace(/\s+/g, " ")
     .trim();
 };
@@ -465,11 +108,16 @@ function ListenScreen({ lang }: { lang: Language }) {
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
   const [fromAyah, setFromAyah] = useState<number>(1);
   const [toAyah, setToAyah] = useState<number>(7);
-  const [reciter, setReciter] = useState<string>('ar.husary');
-  const [repetitions, setRepetitions] = useState<number>(3);
-  const [rangeRepetitions, setRangeRepetitions] = useState<number>(1);
-  const [playlist, setPlaylist] = useState<{url: string, text: string, numberInSurah: number}[]>([]);
-  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(-1);
+  const {
+    playlist, setPlaylist,
+    currentTrackIndex, setCurrentTrackIndex,
+    isPlaying, setIsPlaying,
+    isLoading, setIsLoading,
+    playTrack, pause, resume, stop, startNewPlaylist,
+    reciter, setReciter,
+    repetitions, setRepetitions,
+    rangeRepetitions, setRangeRepetitions
+  } = useAudio();
 
   // Custom Text State
   const [customText, setCustomText] = useState<string>('');
@@ -483,27 +131,27 @@ function ListenScreen({ lang }: { lang: Language }) {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   const RECITERS = [
-    { id: 'ar.husary', name: 'محمود خليل الحصري (معلم)' },
-    { id: 'ar.alafasy', name: 'مشاري العفاسي' },
-    { id: 'ar.abdulbasitmurattal', name: 'عبد الباسط عبد الصمد' },
-    { id: 'ar.saadalghamidi', name: 'سعد الغامدي' },
-    { id: 'ar.mahermuaiqly', name: 'ماهر المعيقلي' }
+    { id: 'Husary_64kbps', name: 'محمود خليل الحصري (معلم)' },
+    { id: 'Minshawy_Murattal_128kbps', name: 'محمد صديق المنشاوي' },
+    { id: 'Alafasy_128kbps', name: 'مشاري العفاسي' },
+    { id: 'Abdul_Basit_Murattal_64kbps', name: 'عبد الباسط عبد الصمد' },
+    { id: 'Ghamadi_40kbps', name: 'سعد الغامدي' },
+    { id: 'Maher_AlMuaiqly_64kbps', name: 'ماهر المعيقلي' },
+    { id: 'https://server14.mp3quran.net/islam/Rewayat-Hafs-A-n-Assem/', name: 'إسلام صبحي' },
+    { id: 'https://server9.mp3quran.net/omar_warsh/', name: 'عمر القزابري (المغرب)' },
+    { id: 'https://server11.mp3quran.net/koshi/', name: 'العيون الكوشي (المغرب)' },
+    { id: 'https://server16.mp3quran.net/souilass/Rewayat-Warsh-A-n-Nafi/', name: 'يونس اسويلص (المغرب)' },
+    { id: 'https://server12.mp3quran.net/ifrad/', name: 'رشيد افراد (المغرب)' },
+    { id: 'https://server6.mp3quran.net/bl3/Rewayat-Warsh-A-n-Nafi/', name: 'رشيد بلعالية (المغرب)' }
   ];
 
   useEffect(() => {
-    // Cleanup audio on unmount
+    // Cleanup custom audio on unmount
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
       window.speechSynthesis.cancel();
     };
   }, []);
@@ -536,61 +184,77 @@ function ListenScreen({ lang }: { lang: Language }) {
   };
 
   const startListening = async () => {
-    setIsLoading(true);
-    try {
-      const data = await fetchAyahs(selectedSurah, fromAyah, toAyah);
-      const ayahs = data.ayahs;
+    if (listenMode === 'quran') {
+      setIsLoading(true);
+      try {
+        const data = await fetchAyahs(selectedSurah, fromAyah, toAyah);
+        const ayahs = data.ayahs;
 
-      const newPlaylist: {url: string, text: string, numberInSurah: number}[] = [];
+        if (ayahs.length === 0) {
+          setIsLoading(false);
+          alert(t[lang].errorFetchingAyahs);
+          return;
+        }
 
-      // Build playlist: repeat each ayah X times, and repeat the whole range Y times
-      for (let j = 0; j < rangeRepetitions; j++) {
-        ayahs.forEach((ayah: any) => {
-          for (let i = 0; i < repetitions; i++) {
-            newPlaylist.push({
-              url: `https://cdn.islamic.network/quran/audio/128/${reciter}/${ayah.globalNumber}.mp3`,
-              text: ayah.text,
-              numberInSurah: ayah.numberInSurah
-            });
+        const newPlaylist: {url: string, text: string, surah: number, ayah: number}[] = [];
+
+        // Build playlist: repeat each ayah X times, and repeat the whole range Y times
+        for (let j = 0; j < rangeRepetitions; j++) {
+          ayahs.forEach((ayah: any) => {
+            for (let i = 0; i < repetitions; i++) {
+              newPlaylist.push({
+                url: getAudioUrl(reciter, selectedSurah, ayah.numberInSurah),
+                text: ayah.text,
+                surah: selectedSurah,
+                ayah: ayah.numberInSurah
+              });
+            }
+          });
+        }
+
+        startNewPlaylist(newPlaylist, 0);
+      } catch (err) {
+        console.error(err);
+        alert(t[lang].errorFetchingAyahs);
+        setIsLoading(false);
+      }
+    } else {
+      // Custom text start logic
+      if (!customText.trim()) return;
+      const sentences = customText.split(/[.،\n]+/).filter(s => s.trim().length > 0);
+      const newPlaylist: string[] = [];
+      
+      for (let j = 0; j < customRangeReps; j++) {
+        sentences.forEach(sentence => {
+          for (let i = 0; i < customReps; i++) {
+            newPlaylist.push(sentence.trim());
           }
         });
       }
-
-      setPlaylist(newPlaylist);
-      setCurrentTrackIndex(0);
+      
+      setCustomPlaylist(newPlaylist);
+      setCustomCurrentIndex(0);
       setIsPlaying(true);
-    } catch (err) {
-      console.error(err);
-      alert(t[lang].errorFetchingAyahs);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const stopListening = () => {
-    setIsPlaying(false);
     if (listenMode === 'quran') {
-      setCurrentTrackIndex(-1);
-      setPlaylist([]);
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
+      stop();
     } else {
       window.speechSynthesis.cancel();
       setCustomCurrentIndex(-1);
       setCustomPlaylist([]);
+      setIsPlaying(false);
     }
   };
 
   const togglePlayPause = () => {
     if (listenMode === 'quran') {
       if (isPlaying) {
-        audioRef.current?.pause();
-        setIsPlaying(false);
+        pause();
       } else {
-        audioRef.current?.play();
-        setIsPlaying(true);
+        resume();
       }
     } else {
       if (isPlaying) {
@@ -603,19 +267,19 @@ function ListenScreen({ lang }: { lang: Language }) {
     }
   };
 
-  // Quran Effect
   useEffect(() => {
-    if (listenMode !== 'quran') return;
-    if (currentTrackIndex >= 0 && currentTrackIndex < playlist.length) {
-      if (audioRef.current) {
-        audioRef.current.src = playlist[currentTrackIndex].url;
-        audioRef.current.play().catch(e => console.error("Audio play error:", e));
-        setIsPlaying(true);
+    const handleGlobalKeys = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlayPause();
+      } else if (e.key === 's' || e.key === 'S') {
+        stopListening();
       }
-    } else if (currentTrackIndex >= playlist.length && playlist.length > 0) {
-      stopListening();
-    }
-  }, [currentTrackIndex, playlist, listenMode]);
+    };
+    window.addEventListener('keydown', handleGlobalKeys);
+    return () => window.removeEventListener('keydown', handleGlobalKeys);
+  }, [isPlaying, listenMode, customText, customReps, customRangeReps]);
 
   // Custom Text Effect
   useEffect(() => {
@@ -642,24 +306,23 @@ function ListenScreen({ lang }: { lang: Language }) {
     }
   }, [customCurrentIndex, customPlaylist, customLang, listenMode]);
 
-  const handleAudioEnded = () => {
-    if (listenMode === 'quran') {
-      setCurrentTrackIndex(prev => prev + 1);
-    }
-  };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 15 * 1024 * 1024) {
-      alert("حجم الصورة كبير جداً. يرجى رفع صورة أقل من 15 ميجابايت.");
+      alert(lang.startsWith('ar') ? "حجم الصورة كبير جداً. يرجى رفع صورة أقل من 15 ميجابايت." : "Image size is too large. Please upload an image smaller than 15MB.");
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "") {
+      alert(lang.startsWith('ar') ? "خطأ: لم يتم العثور على مفتاح API. يرجى التأكد من إضافة GEMINI_API_KEY في قسم Secrets ثم قم بتحديث الصفحة (Refresh)." : "Error: API key not found. Please ensure GEMINI_API_KEY is added to Secrets and refresh the page.");
       return;
     }
 
     setExtractingType('image');
     try {
-      // Convert file to base64
       const reader = new FileReader();
       reader.readAsDataURL(file);
       await new Promise<void>((resolve, reject) => {
@@ -668,44 +331,33 @@ function ListenScreen({ lang }: { lang: Language }) {
       });
 
       const base64Data = (reader.result as string).split(',')[1];
-      let mimeType = file.type;
-      if (!mimeType) {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'webp') mimeType = 'image/webp';
-        else mimeType = 'image/jpeg';
-      }
+      let mimeType = file.type || 'image/jpeg';
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType,
-              },
-            },
-            {
-              text: "استخرج النص من هذه الصورة بدقة. أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد.",
-            },
-          ],
-        },
+        contents: [
+          {
+            parts: [
+              { inlineData: { data: base64Data, mimeType } },
+              { text: "استخرج النص من هذه الصورة بدقة. أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد." }
+            ]
+          }
+        ],
       });
 
       if (response.text) {
         setCustomText(prev => prev ? prev + '\n\n' + response.text.trim() : response.text.trim());
+      } else {
+        throw new Error("لم يتم العثور على نص في الصورة.");
       }
-    } catch (error) {
-      console.error("Error extracting text:", error);
-      alert("حدث خطأ أثناء استخراج النص. يرجى المحاولة مرة أخرى.");
+    } catch (error: any) {
+      console.error("Extraction Error:", error);
+      const msg = error?.message || String(error);
+      alert(lang.startsWith('ar') ? `حدث خطأ: ${msg}` : `Error: ${msg}`);
     } finally {
       setExtractingType(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -714,13 +366,18 @@ function ListenScreen({ lang }: { lang: Language }) {
     if (!file) return;
 
     if (file.size > 15 * 1024 * 1024) {
-      alert("حجم الملف الصوتي كبير جداً. يرجى رفع ملف أقل من 15 ميجابايت.");
+      alert(lang.startsWith('ar') ? "حجم الملف الصوتي كبير جداً. يرجى رفع ملف أقل من 15 ميجابايت." : "Audio file size is too large. Please upload a file smaller than 15MB.");
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "") {
+      alert(lang.startsWith('ar') ? "خطأ: مفتاح API غير صالح أو غير مضبوط." : "Error: Invalid or missing API key.");
       return;
     }
 
     setExtractingType('audio');
     try {
-      // Convert file to base64
       const reader = new FileReader();
       reader.readAsDataURL(file);
       await new Promise<void>((resolve, reject) => {
@@ -732,43 +389,35 @@ function ListenScreen({ lang }: { lang: Language }) {
       let mimeType = file.type;
       if (!mimeType) {
         const ext = file.name.split('.').pop()?.toLowerCase();
-        if (ext === 'mp3') mimeType = 'audio/mp3';
-        else if (ext === 'wav') mimeType = 'audio/wav';
-        else if (ext === 'm4a') mimeType = 'audio/mp4';
-        else if (ext === 'ogg') mimeType = 'audio/ogg';
-        else if (ext === 'webm') mimeType = 'audio/webm';
-        else mimeType = 'audio/mp3';
+        mimeType = ext === 'wav' ? 'audio/wav' : ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg';
+      } else if (mimeType === 'audio/mp3') {
+        mimeType = 'audio/mpeg';
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType,
-              },
-            },
-            {
-              text: "استخرج النص من هذا المقطع الصوتي بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد.",
-            },
-          ],
-        },
+        contents: [
+          {
+            parts: [
+              { inlineData: { data: base64Data, mimeType } },
+              { text: "استخرج النص من هذا المقطع الصوتي بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات." }
+            ]
+          }
+        ],
       });
 
       if (response.text) {
         setCustomText(prev => prev ? prev + '\n\n' + response.text.trim() : response.text.trim());
+      } else {
+        throw new Error("لم يتم استخراج أي نص من الصوت.");
       }
-    } catch (error) {
-      console.error("Error extracting text from audio:", error);
-      alert("حدث خطأ أثناء استخراج النص من الصوت. يرجى المحاولة مرة أخرى.");
+    } catch (error: any) {
+      console.error("Audio Extraction Error:", error);
+      alert(lang.startsWith('ar') ? `خطأ في الصوت: ${error?.message || error}` : `Audio Error: ${error?.message || error}`);
     } finally {
       setExtractingType(null);
-      if (audioInputRef.current) {
-        audioInputRef.current.value = '';
-      }
+      if (audioInputRef.current) audioInputRef.current.value = '';
     }
   };
 
@@ -777,13 +426,18 @@ function ListenScreen({ lang }: { lang: Language }) {
     if (!file) return;
 
     if (file.size > 15 * 1024 * 1024) {
-      alert("حجم الفيديو كبير جداً. يرجى رفع ملف أقل من 15 ميجابايت.");
+      alert(lang.startsWith('ar') ? "حجم الفيديو كبير جداً. يرجى رفع ملف أقل من 15 ميجابايت." : "Video file size is too large. Please upload a file smaller than 15MB.");
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "") {
+      alert(lang.startsWith('ar') ? "خطأ: مفتاح API غير صالح أو غير مضبوط." : "Error: Invalid or missing API key.");
       return;
     }
 
     setExtractingType('video');
     try {
-      // Convert file to base64
       const reader = new FileReader();
       reader.readAsDataURL(file);
       await new Promise<void>((resolve, reject) => {
@@ -792,44 +446,32 @@ function ListenScreen({ lang }: { lang: Language }) {
       });
 
       const base64Data = (reader.result as string).split(',')[1];
-      let mimeType = file.type;
-      if (!mimeType) {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        if (ext === 'mp4') mimeType = 'video/mp4';
-        else if (ext === 'webm') mimeType = 'video/webm';
-        else if (ext === 'mov') mimeType = 'video/quicktime';
-        else mimeType = 'video/mp4';
-      }
+      let mimeType = file.type || 'video/mp4';
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType,
-              },
-            },
-            {
-              text: "استخرج النص من هذا الفيديو بدقة (تفريغ صوتي وقراءة النصوص الظاهرة إن وجدت). أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد.",
-            },
-          ],
-        },
+        contents: [
+          {
+            parts: [
+              { inlineData: { data: base64Data, mimeType } },
+              { text: "استخرج النص من هذا الفيديو بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات." }
+            ]
+          }
+        ],
       });
 
       if (response.text) {
         setCustomText(prev => prev ? prev + '\n\n' + response.text.trim() : response.text.trim());
+      } else {
+        throw new Error("لم يتم استخراج أي نص من الفيديو.");
       }
-    } catch (error) {
-      console.error("Error extracting text from video:", error);
-      alert("حدث خطأ أثناء استخراج النص من الفيديو. يرجى المحاولة مرة أخرى.");
+    } catch (error: any) {
+      console.error("Video Extraction Error:", error);
+      alert(lang.startsWith('ar') ? `خطأ في الفيديو: ${error?.message || error}` : `Video Error: ${error?.message || error}`);
     } finally {
       setExtractingType(null);
-      if (videoInputRef.current) {
-        videoInputRef.current.value = '';
-      }
+      if (videoInputRef.current) videoInputRef.current.value = '';
     }
   };
 
@@ -854,68 +496,70 @@ function ListenScreen({ lang }: { lang: Language }) {
   };
 
   return (
-    <div className="p-6 pb-24 max-w-md mx-auto h-full overflow-y-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="bg-emerald-100 p-3 rounded-2xl">
-          <Headphones className="text-emerald-600" size={28} />
+    <div className="p-4 sm:p-6 pb-24 max-w-2xl mx-auto h-full overflow-y-auto">
+      <div className="flex items-center gap-4 mb-8">
+        <div className="bg-emerald-100 p-4 rounded-2xl shadow-sm">
+          <Headphones className="text-emerald-600" size={32} />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">{t[lang].listenAndMemorizeTitle}</h2>
-          <p className="text-slate-500 text-sm">{t[lang].listenAndMemorizeDesc}</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-800">{t[lang].listenAndMemorizeTitle}</h2>
+          <p className="text-slate-500 text-sm sm:text-base">{t[lang].listenAndMemorizeDesc}</p>
         </div>
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex bg-slate-200 p-1 rounded-2xl mb-6">
+      <div className="flex bg-slate-200 p-1.5 rounded-2xl mb-8 shadow-inner">
         <button 
           onClick={() => { setListenMode('quran'); stopListening(); }}
-          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${listenMode === 'quran' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex-1 py-4 rounded-xl font-bold text-base transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${listenMode === 'quran' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
         >
           {t[lang].quran}
         </button>
         <button 
           onClick={() => { setListenMode('custom'); stopListening(); }}
-          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${listenMode === 'custom' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex-1 py-4 rounded-xl font-bold text-base transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${listenMode === 'custom' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
         >
           {t[lang].customTexts}
         </button>
       </div>
 
-      <audio ref={audioRef} onEnded={handleAudioEnded} />
-
       {listenMode === 'quran' ? (
         playlist.length > 0 && currentTrackIndex >= 0 && currentTrackIndex < playlist.length ? (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 flex flex-col items-center text-center">
-            <Volume2 size={40} className="text-emerald-500 mb-4 animate-pulse" />
-            <h3 className="text-lg font-bold text-slate-500 mb-2">
-              {selectedSurahData?.name} - {t[lang].ayah} {playlist[currentTrackIndex].numberInSurah}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-8 rounded-[32px] shadow-xl border border-slate-100 mb-8 flex flex-col items-center text-center">
+            <div className="bg-emerald-50 p-5 rounded-full mb-6">
+              <Volume2 size={48} className="text-emerald-500 animate-pulse" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-500 mb-4">
+              {selectedSurahData?.name} - {t[lang].ayah} {playlist[currentTrackIndex].ayah}
             </h3>
-            <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 mb-8 w-full min-h-[120px] flex items-center justify-center">
-              <p className="text-2xl leading-loose font-medium text-slate-800">
+            <div className="bg-emerald-50/50 p-8 rounded-3xl border-2 border-emerald-100/50 mb-10 w-full min-h-[160px] flex items-center justify-center shadow-inner">
+              <p className="text-2xl sm:text-3xl leading-relaxed font-arabic text-slate-800">
                 {playlist[currentTrackIndex].text} ۝
               </p>
             </div>
             
-            <div className="flex items-center gap-4 w-full justify-center">
+            <div className="flex items-center gap-6 w-full justify-center">
               <button 
                 onClick={stopListening}
-                className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center hover:bg-red-200 transition-colors"
+                className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center hover:bg-red-200 focus:ring-4 focus:ring-red-300 outline-none transition-all"
+                title="S - Stop"
               >
-                <Square size={24} fill="currentColor" />
+                <Square size={28} fill="currentColor" />
               </button>
               <button 
                 onClick={togglePlayPause}
-                className="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-colors"
+                className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-xl shadow-emerald-200 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all transform active:scale-95"
+                title="Space - Play/Pause"
               >
-                {isPlaying ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-2" />}
+                {isPlaying ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-2" />}
               </button>
             </div>
-            <div className="flex flex-col items-center gap-1 mt-6">
-              <p className="text-slate-500 font-medium">
+            <div className="flex flex-col items-center gap-2 mt-8">
+              <p className="text-slate-500 font-bold text-lg">
                 {t[lang].currentRepetition.replace('{current}', String((currentTrackIndex % repetitions) + 1)).replace('{total}', String(repetitions))}
               </p>
               {rangeRepetitions > 1 && (
-                <p className="text-emerald-600 font-bold text-sm bg-emerald-50 px-3 py-1 rounded-full">
+                <p className="text-emerald-700 font-black text-sm bg-emerald-100 px-4 py-1.5 rounded-full uppercase tracking-wide">
                   {t[lang].currentRangeRepetition
                     .replace('{current}', String(Math.floor(currentTrackIndex / (playlist.length / rangeRepetitions)) + 1))
                     .replace('{total}', String(rangeRepetitions))}
@@ -924,9 +568,9 @@ function ListenScreen({ lang }: { lang: Language }) {
             </div>
           </motion.div>
         ) : (
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-5">
+          <div className="bg-white p-6 sm:p-8 rounded-[32px] shadow-lg border border-slate-100 space-y-6">
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].chooseSurah}</label>
+              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].chooseSurah}</label>
               <CustomSelect 
                 value={selectedSurah} 
                 onChange={(val) => handleSurahChange({ target: { value: val } } as any)}
@@ -934,13 +578,13 @@ function ListenScreen({ lang }: { lang: Language }) {
               />
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 sm:gap-6">
               <div className="flex-1">
                 <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].fromAyah}</label>
                 <input 
                   type="number" min="1" max={toAyah} 
                   value={fromAyah} onChange={e => setFromAyah(Number(e.target.value))}
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold text-lg"
                 />
               </div>
               <div className="flex-1">
@@ -948,13 +592,13 @@ function ListenScreen({ lang }: { lang: Language }) {
                 <input 
                   type="number" min={fromAyah} max={maxAyahs} 
                   value={toAyah} onChange={e => setToAyah(Number(e.target.value))}
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold"
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold text-lg"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].reciter}</label>
+              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].reciter}</label>
               <CustomSelect 
                 value={reciter} 
                 onChange={(val) => setReciter(val)}
@@ -963,41 +607,41 @@ function ListenScreen({ lang }: { lang: Language }) {
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].repetitions}</label>
-              <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-200">
+              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].repetitions}</label>
+              <div className="flex items-center gap-6 bg-slate-50 p-3 rounded-2xl border-2 border-slate-100">
                 <input 
                   type="range" min="1" max="10" 
                   value={repetitions} onChange={e => setRepetitions(Number(e.target.value))}
-                  className="flex-1 accent-emerald-500"
+                  className="flex-1 accent-emerald-500 h-2"
                 />
-                <span className="w-10 text-center font-bold text-emerald-600 text-lg">{repetitions}</span>
+                <span className="w-12 text-center font-black text-emerald-600 text-xl">{repetitions}</span>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].rangeRepetitions}</label>
-              <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-200">
+              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].rangeRepetitions}</label>
+              <div className="flex items-center gap-6 bg-slate-50 p-3 rounded-2xl border-2 border-slate-100">
                 <input 
                   type="range" min="1" max="10" 
                   value={rangeRepetitions} onChange={e => setRangeRepetitions(Number(e.target.value))}
-                  className="flex-1 accent-emerald-500"
+                  className="flex-1 accent-emerald-500 h-2"
                 />
-                <span className="w-10 text-center font-bold text-emerald-600 text-lg">{rangeRepetitions}</span>
+                <span className="w-12 text-center font-black text-emerald-600 text-xl">{rangeRepetitions}</span>
               </div>
             </div>
 
             <button 
               onClick={startListening}
               disabled={isLoading}
-              className="w-full bg-emerald-500 text-white font-bold text-lg py-4 rounded-2xl shadow-md shadow-emerald-200 flex items-center justify-center gap-2 mt-4 hover:bg-emerald-600 transition-colors disabled:opacity-70"
+              className="w-full bg-emerald-500 text-white font-bold py-5 rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-3 text-lg"
             >
               {isLoading ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" />}
-              {t[lang].startDictation}
+              <span>{t[lang].startListening}</span>
             </button>
             <button 
               onClick={handleDownload}
               disabled={isDownloading || isLoading}
-              className="w-full bg-slate-100 text-slate-700 font-bold text-lg py-4 rounded-2xl border border-slate-200 flex items-center justify-center gap-2 mt-2 hover:bg-slate-200 transition-colors disabled:opacity-70"
+              className="w-full bg-slate-100 text-slate-700 font-bold py-5 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-3 hover:bg-slate-200 focus:ring-4 focus:ring-slate-300 outline-none transition-all text-lg"
             >
               {isDownloading ? (
                 <>
@@ -1075,7 +719,7 @@ function ListenScreen({ lang }: { lang: Language }) {
                     ) : (
                       <ImageIcon className="w-4 h-4" />
                     )}
-                    {lang === 'ar-SA' ? 'صورة' : lang === 'fr-FR' ? 'Image' : 'Image'}
+                    {lang.startsWith('ar') ? 'صورة' : lang.startsWith('fr') ? 'Image' : 'Image'}
                   </button>
                   <input 
                     type="file" 
@@ -1087,14 +731,14 @@ function ListenScreen({ lang }: { lang: Language }) {
                   <button 
                     onClick={() => audioInputRef.current?.click()}
                     disabled={extractingType !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
                   >
                     {extractingType === 'audio' ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Mic className="w-4 h-4" />
                     )}
-                    {lang === 'ar-SA' ? 'صوت' : lang === 'fr-FR' ? 'Audio' : 'Audio'}
+                    {lang.startsWith('ar') ? 'صوت' : lang.startsWith('fr') ? 'Audio' : 'Audio'}
                   </button>
                   <input 
                     type="file" 
@@ -1106,14 +750,14 @@ function ListenScreen({ lang }: { lang: Language }) {
                   <button 
                     onClick={() => videoInputRef.current?.click()}
                     disabled={extractingType !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors text-sm font-medium disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
                   >
                     {extractingType === 'video' ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Video className="w-4 h-4" />
                     )}
-                    {lang === 'ar-SA' ? 'فيديو' : lang === 'fr-FR' ? 'Vidéo' : 'Video'}
+                    {lang.startsWith('ar') ? 'فيديو' : lang.startsWith('fr') ? 'Vidéo' : 'Video'}
                   </button>
                 </div>
               </div>
@@ -1185,8 +829,9 @@ function ListenScreen({ lang }: { lang: Language }) {
 
 // --- Main App Component ---
 export default function App() {
-  const [view, setView] = useState<View>('garden');
+  const [view, setView] = useState<View>('study');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
   const [coins, setCoins] = useState(0);
   const [xp, setXp] = useState(0);
   const [donations, setDonations] = useState(0);
@@ -1197,6 +842,71 @@ export default function App() {
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [lang, setLang] = useState<Language>('ar');
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+  const { isPlaying, playlist, currentTrackIndex, pause, resume } = useAudio();
+
+  const [isRemoteModalOpen, setIsRemoteModalOpen] = useState(false);
+  const [deviceId] = useState(() => {
+    const saved = localStorage.getItem('hoffad_device_id');
+    if (saved) return saved;
+    const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    localStorage.setItem('hoffad_device_id', newId);
+    return newId;
+  });
+
+  // Listen for remote uploads
+  useEffect(() => {
+    const q = query(collection(db, 'uploads'), where('deviceId', '==', deviceId));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          // Handle new upload (e.g., add to lessons)
+          if (data.type === 'image') {
+            setLessons(prev => [...prev, { 
+              id: change.doc.id, 
+              title: data.name || `Remote Image ${new Date().toLocaleTimeString()}`, 
+              text: data.url, 
+              type: 'custom' 
+            }]);
+          }
+          // Delete from firestore after processing
+          deleteDoc(doc(db, 'uploads', change.doc.id));
+        }
+      });
+    });
+    return () => unsubscribe();
+  }, [deviceId]);
+
+  useEffect(() => {
+    const handleAppKeys = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.key === 'm' || e.key === 'M') {
+        setIsSidebarOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleAppKeys);
+    return () => window.removeEventListener('keydown', handleAppKeys);
+  }, []);
+
+  // Fallback translation helper
+  const getT = (l: string) => {
+    return (t as any)[l] || t['en'];
+  };
+
+  const currentT = getT(lang);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (langMenuRef.current && !langMenuRef.current.contains(event.target as Node)) {
+        setIsLangMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // --- Handlers ---
   const handleDonate = (amount: number) => {
@@ -1219,49 +929,124 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen font-sans flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800 ${isDarkMode ? 'dark' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <div className={`min-h-screen font-sans flex flex-col transition-colors duration-300 bg-slate-50 text-slate-800 ${isDarkMode ? 'dark' : ''}`} dir={APP_LANGUAGES.find(l => l.code === lang)?.dir || 'ltr'}>
+      {/* Remote Upload Modal */}
+      <AnimatePresence>
+        {isRemoteModalOpen && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[40px] p-8 max-w-md w-full shadow-2xl relative overflow-hidden"
+            >
+              <button 
+                onClick={() => setIsRemoteModalOpen(false)}
+                className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="text-center">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <ImageIcon size={32} />
+                </div>
+                <h2 className="text-2xl font-black text-slate-800 mb-2">{currentT.remoteUploadTitle}</h2>
+                <p className="text-slate-500 mb-8">{currentT.scanToUpload}</p>
+
+                <div className="bg-white p-6 rounded-3xl border-4 border-slate-50 shadow-inner inline-block mb-8">
+                  <QRCodeSVG 
+                    value={`${window.location.origin}/upload?dev=${deviceId}`}
+                    size={200}
+                    level="H"
+                    includeMargin={false}
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Device ID</p>
+                  <p className="text-2xl font-mono font-black text-emerald-600 tracking-wider">{deviceId}</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       {/* Header */}
-      <header className="bg-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-10 transition-colors duration-300">
+      <header className="bg-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-[100] transition-colors duration-300 border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="bg-[#00c48c] text-white p-2.5 sm:p-3 rounded-[16px] shadow-sm hover:bg-[#00b07d] transition-colors"
+            className="bg-[#00c48c] text-white p-2.5 sm:p-3 rounded-[16px] shadow-sm hover:bg-[#00b07d] transition-colors focus:ring-4 focus:ring-emerald-300 outline-none"
           >
             <Menu size={24} />
           </button>
           <div className="flex items-center gap-2 hidden sm:flex">
             <img src="/logo.svg" alt="Hoffad Logo" className="w-8 h-8 object-contain" />
-            <h1 className="font-bold text-xl text-slate-800">{t[lang].myApp}</h1>
+            <h1 className="font-bold text-xl text-slate-800">{currentT.myApp}</h1>
           </div>
         </div>
 
         <div className="flex items-center gap-4 sm:gap-5">
-          <div className="relative">
-            <select 
-              value={lang} 
-              onChange={(e) => setLang(e.target.value as Language)}
-              className="appearance-none bg-slate-50 text-slate-700 text-sm font-bold py-2.5 ps-4 pe-10 rounded-full outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+          {/* Custom Language Selector for TV Compatibility */}
+          <div className="relative" ref={langMenuRef}>
+            <button 
+              onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
+              className="flex items-center gap-2 bg-slate-50 text-slate-700 text-sm font-bold py-2 px-4 rounded-full hover:bg-slate-100 transition-colors border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
             >
-              <option value="ar">AR</option>
-              <option value="en">EN</option>
-              <option value="fr">FR</option>
-              <option value="es">ES</option>
-            </select>
-            <div className="absolute end-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-              <ChevronDown size={16} />
-            </div>
+              <Languages size={18} className="text-emerald-600" />
+              <span className="uppercase">{lang}</span>
+              <ChevronDown size={14} className={`transition-transform ${isLangMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+              {isLangMenuOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute top-full mt-2 start-0 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[1000] overflow-hidden py-2 max-h-[70vh] overflow-y-auto"
+                >
+                  {APP_LANGUAGES.map((l) => (
+                    <button
+                      key={l.code}
+                      onClick={() => {
+                        setLang(l.code);
+                        setIsLangMenuOpen(false);
+                      }}
+                      className={`w-full text-start px-4 py-3 text-sm font-medium transition-colors flex items-center justify-between ${lang === l.code ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <span>{l.name}</span>
+                      {lang === l.code && <Check size={16} />}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
           
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className="text-slate-400 hover:text-slate-600 transition-colors"
+            className="text-slate-400 hover:text-slate-600 transition-colors focus:ring-2 focus:ring-emerald-500 outline-none p-1 rounded-full"
           >
             {isDarkMode ? <Sun size={24} className="text-amber-500" /> : <Moon size={24} />}
           </button>
           
-          <div className="flex items-center gap-2 bg-[#fff4d4] text-[#d97706] px-4 py-2.5 rounded-full font-bold text-sm">
-            <span className="text-base">{coins}</span>
-            <Coins size={20} />
+          <div className="flex items-center gap-2">
+            {!isPremium && (
+              <button 
+                onClick={() => setView('upgrade')}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 px-3 py-1.5 rounded-full font-black text-[10px] sm:text-xs shadow-md shadow-amber-200 hover:scale-105 transition-transform active:scale-95 focus:ring-4 focus:ring-amber-300 outline-none"
+              >
+                <Star size={14} fill="currentColor" />
+                <span className="uppercase tracking-wider">{t[lang].upgradeShort}</span>
+              </button>
+            )}
+            
+            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-100/50 px-4 py-2.5 rounded-full font-bold text-sm">
+              <span className="text-base">{coins}</span>
+              <Coins size={20} className="text-emerald-600" />
+            </div>
           </div>
         </div>
       </header>
@@ -1283,6 +1068,7 @@ export default function App() {
               exit={{ x: lang === 'ar' ? '100%' : '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className={`fixed top-0 bottom-0 ${lang === 'ar' ? 'right-0' : 'left-0'} w-64 bg-white shadow-2xl z-50 flex flex-col`}
+              dir={lang === 'ar' ? 'rtl' : 'ltr'}
             >
               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50">
                 <div className="flex items-center gap-2">
@@ -1296,45 +1082,61 @@ export default function App() {
               
               <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-2 px-3">
                 <button 
-                  onClick={() => { setView('garden'); setIsSidebarOpen(false); }}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'garden' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                  onClick={() => { setView('mushaf'); setIsSidebarOpen(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-emerald-500 outline-none ${view === 'mushaf' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                 >
-                  <TreePine size={22} className={view === 'garden' ? 'text-emerald-600' : 'text-slate-400'} />
+                  <Book size={22} className={view === 'mushaf' ? 'text-emerald-600' : 'text-emerald-500'} />
+                  <span>{t[lang].quran}</span>
+                </button>
+
+                <button 
+                  onClick={() => { setView('listen'); setIsSidebarOpen(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-emerald-500 outline-none ${view === 'listen' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <Headphones size={22} className={view === 'listen' ? 'text-emerald-600' : 'text-emerald-500'} />
+                  <span>{t[lang].listen}</span>
+                </button>
+
+                <button 
+                  onClick={() => { setView('study'); setIsSidebarOpen(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-emerald-500 outline-none ${view === 'study' || view === 'game' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <BookOpen size={22} className={view === 'study' || view === 'game' ? 'text-emerald-600' : 'text-emerald-500'} />
+                  <span>{t[lang].study}</span>
+                </button>
+
+                <button 
+                  onClick={() => { setView('garden'); setIsSidebarOpen(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-emerald-500 outline-none ${view === 'garden' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <TreePine size={22} className={view === 'garden' ? 'text-emerald-600' : 'text-emerald-500'} />
                   <span>{t[lang].garden}</span>
                 </button>
                 
                 <button 
-                  onClick={() => { setView('study'); setIsSidebarOpen(false); }}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'study' || view === 'game' ? 'bg-blue-100 text-blue-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  <BookOpen size={22} className={view === 'study' || view === 'game' ? 'text-blue-600' : 'text-slate-400'} />
-                  <span>{t[lang].study}</span>
-                </button>
-                
-                <button 
-                  onClick={() => { setView('listen'); setIsSidebarOpen(false); }}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'listen' ? 'bg-purple-100 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  <Headphones size={22} className={view === 'listen' ? 'text-purple-600' : 'text-slate-400'} />
-                  <span>{t[lang].listen}</span>
-                </button>
-                
-                <button 
-                  onClick={() => { setView('mushaf'); setIsSidebarOpen(false); }}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'mushaf' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  <Book size={22} className={view === 'mushaf' ? 'text-emerald-600' : 'text-slate-400'} />
-                  <span>{t[lang].quran}</span>
-                </button>
-                
-                <div className="h-px bg-slate-100 my-2 mx-2"></div>
-                
-                <button 
                   onClick={() => { setView('parent'); setIsSidebarOpen(false); }}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'parent' ? 'bg-slate-200 text-slate-800 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-emerald-500 outline-none ${view === 'parent' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                 >
-                  <Settings size={22} className={view === 'parent' ? 'text-slate-700' : 'text-slate-400'} />
+                  <ShieldCheck size={22} className={view === 'parent' ? 'text-emerald-600' : 'text-emerald-500'} />
                   <span>{t[lang].settings}</span>
+                </button>
+
+                {!isPremium && (
+                  <button 
+                    onClick={() => { setView('upgrade'); setIsSidebarOpen(false); }}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-amber-500 outline-none ${view === 'upgrade' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-200'}`}
+                  >
+                    <Star size={22} className={view === 'upgrade' ? 'text-amber-600' : 'text-white'} fill={view === 'upgrade' ? 'currentColor' : 'none'} />
+                    <span>{t[lang].upgrade}</span>
+                  </button>
+                )}
+
+                <button 
+                  onClick={() => { setView('about'); setIsSidebarOpen(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-emerald-500 outline-none ${view === 'about' ? 'bg-emerald-100 text-emerald-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <AlertCircle size={22} className={view === 'about' ? 'text-emerald-600' : 'text-emerald-500'} />
+                  <span>{t[lang].aboutUs}</span>
                 </button>
               </div>
             </motion.div>
@@ -1346,22 +1148,44 @@ export default function App() {
       <main className="flex-1 max-w-md w-full mx-auto p-4 flex flex-col pb-8">
         <AnimatePresence mode="wait">
           {view === 'garden' && (
-            <GardenScreen key="garden" xp={xp} coins={coins} donations={donations} onDonate={handleDonate} onStudyClick={() => setView('study')} lang={lang} />
+            <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <GardenScreen xp={xp} coins={coins} donations={donations} onDonate={handleDonate} onStudyClick={() => setView('study')} lang={lang} />
+            </motion.div>
           )}
           {view === 'study' && (
-            <StudyScreen key="study" lessons={lessons} onStartGame={startGame} lang={lang} />
+            <motion.div key="study" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <StudyScreen lessons={lessons} onStartGame={startGame} lang={lang} />
+            </motion.div>
           )}
           {view === 'game' && activeLesson && (
-            <GameScreen key="game" lesson={activeLesson} onComplete={handleGameComplete} onCancel={() => setView('study')} lang={lang} />
+            <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <GameScreen lesson={activeLesson} onComplete={handleGameComplete} onCancel={() => setView('study')} lang={lang} />
+            </motion.div>
           )}
           {view === 'listen' && (
-            <ListenScreen key="listen" lang={lang} />
+            <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ListenScreen lang={lang} />
+            </motion.div>
           )}
           {view === 'parent' && (
-            <ParentScreen key="parent" lessons={lessons} setLessons={setLessons} lang={lang} />
+            <motion.div key="parent" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ParentScreen lessons={lessons} setLessons={setLessons} lang={lang} setLang={setLang} isPremium={isPremium} onUpgrade={() => setView('upgrade')} setIsRemoteModalOpen={setIsRemoteModalOpen} />
+            </motion.div>
           )}
           {view === 'mushaf' && (
-            <MushafViewer key="mushaf" />
+            <motion.div key="mushaf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <MushafViewer />
+            </motion.div>
+          )}
+          {view === 'about' && (
+            <motion.div key="about" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <AboutScreen lang={lang} />
+            </motion.div>
+          )}
+          {view === 'upgrade' && (
+            <motion.div key="upgrade" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <UpgradeScreen lang={lang} onUpgrade={() => { setIsPremium(true); setView('study'); }} />
+            </motion.div>
           )}
         </AnimatePresence>
       </main>
@@ -1370,6 +1194,109 @@ export default function App() {
 }
 
 // --- Screens ---
+
+function UpgradeScreen({ lang, onUpgrade }: { lang: Language, onUpgrade: () => void }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+      className="flex flex-col gap-6 py-4"
+    >
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden">
+        {/* Decorative background */}
+        <div className="absolute top-0 right-0 p-4 opacity-10">
+          <Sparkles size={120} className="text-emerald-600" />
+        </div>
+
+        <div className="flex flex-col items-center text-center mb-10">
+          <div className="p-4 bg-emerald-100 rounded-full mb-4">
+            <Star className="text-emerald-600" size={48} fill="currentColor" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-800 mb-2">{t[lang].upgrade}</h2>
+          <p className="text-slate-500 max-w-xs">{t[lang].upgradeDesc}</p>
+        </div>
+
+        <div className="space-y-4 mb-10">
+          {[
+            { icon: <Mic size={20} />, text: t[lang].unlimitedMemorization },
+            { icon: <Check size={20} />, text: t[lang].advancedTajweed },
+            { icon: <BookOpen size={20} />, text: t[lang].unlimitedLessons },
+            { icon: <Download size={20} />, text: t[lang].offlineMode },
+          ].map((feature, i) => (
+            <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="text-emerald-600">{feature.icon}</div>
+              <span className="font-bold text-slate-700">{feature.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          <button 
+            onClick={onUpgrade}
+            className="p-6 bg-emerald-500 text-white rounded-3xl shadow-lg shadow-emerald-200 flex flex-col items-center gap-1 hover:bg-emerald-600 transition-all active:scale-95"
+          >
+            <span className="text-xl font-black">{t[lang].monthlyPlan}</span>
+            <span className="text-emerald-100 font-bold">{t[lang].priceMonthly}</span>
+          </button>
+
+          <button 
+            onClick={onUpgrade}
+            className="p-6 bg-slate-800 text-white rounded-3xl shadow-lg shadow-slate-200 flex flex-col items-center gap-1 hover:bg-slate-900 transition-all active:scale-95 relative"
+          >
+            <div className="absolute -top-3 right-6 bg-amber-400 text-amber-950 text-xs font-black px-3 py-1 rounded-full shadow-sm">
+              {t[lang].save25}
+            </div>
+            <span className="text-xl font-black">{t[lang].yearlyPlan}</span>
+            <span className="text-slate-400 font-bold">{t[lang].priceYearly}</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function AboutScreen({ lang }: { lang: Language }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+      className="flex flex-col gap-6 py-4"
+    >
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="p-3 bg-emerald-100 rounded-2xl">
+            <AlertCircle className="text-emerald-600" size={32} />
+          </div>
+          <h2 className="text-2xl font-black text-slate-800">{t[lang].aboutUs}</h2>
+        </div>
+
+        <div className="space-y-8">
+          <section>
+            <h3 className="text-lg font-bold text-emerald-600 mb-2">{t[lang].myApp}</h3>
+            <p className="text-slate-600 leading-relaxed">{t[lang].aboutDesc}</p>
+          </section>
+
+          <section>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">{t[lang].privacyPolicy}</h3>
+            <p className="text-slate-600 leading-relaxed">{t[lang].privacyDesc}</p>
+          </section>
+
+          <section>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">{t[lang].termsOfUse}</h3>
+            <p className="text-slate-600 leading-relaxed">{t[lang].termsDesc}</p>
+          </section>
+
+          <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+            <div className="flex gap-3">
+              <AlertCircle className="text-emerald-500 shrink-0" size={20} />
+              <p className="text-sm text-emerald-800 font-medium leading-snug">
+                {t[lang].warning}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 
 function GardenScreen({ xp, coins, donations, onDonate, onStudyClick, lang }: { xp: number, coins: number, donations: number, onDonate: (amount: number) => void, onStudyClick: () => void, lang: Language }) {
   const levels = [
@@ -1440,10 +1367,10 @@ function GardenScreen({ xp, coins, donations, onDonate, onStudyClick, lang }: { 
           <button 
             onClick={() => onDonate(20)}
             disabled={coins < 20}
-            className={`flex items-center justify-between p-4 rounded-2xl transition-all ${coins >= 20 ? 'bg-blue-50 hover:bg-blue-100 text-blue-700' : 'bg-slate-50 text-slate-400 opacity-70'}`}
+            className={`flex items-center justify-between p-4 rounded-2xl transition-all ${coins >= 20 ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700' : 'bg-slate-50 text-slate-400 opacity-70'}`}
           >
             <div className="flex items-center gap-3">
-              <div className="bg-white p-2 rounded-xl shadow-sm"><Droplet size={24} className={coins >= 20 ? 'text-blue-500' : 'text-slate-400'} /></div>
+              <div className="bg-white p-2 rounded-xl shadow-sm"><Droplet size={24} className={coins >= 20 ? 'text-emerald-500' : 'text-slate-400'} /></div>
               <span className="font-bold">{t[lang].water}</span>
             </div>
             <span className="font-bold text-sm bg-white px-3 py-1 rounded-full shadow-sm">20 {t[lang].coin}</span>
@@ -1493,7 +1420,7 @@ function StudyScreen({ lessons, onStartGame, lang }: { lessons: Lesson[], onStar
   return (
     <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="py-4">
       <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-        <BookOpen className="text-blue-500" />
+        <BookOpen className="text-emerald-500" />
         {t[lang].memorizationTasks}
       </h2>
       
@@ -1511,7 +1438,7 @@ function StudyScreen({ lessons, onStartGame, lang }: { lessons: Lesson[], onStar
               </div>
               <button 
                 onClick={() => onStartGame(lesson)}
-                className="bg-blue-100 text-blue-600 p-3 rounded-xl hover:bg-blue-200 transition-colors"
+                className="bg-emerald-100 text-emerald-600 p-3 rounded-xl hover:bg-emerald-200 transition-colors"
               >
                 <ArrowRight size={20} />
               </button>
@@ -1564,21 +1491,21 @@ function GameScreen({ lesson, onComplete, onCancel, lang }: { lesson: Lesson, on
       <div className="flex bg-slate-200 p-1 rounded-2xl mb-6">
         <button 
           onClick={() => setMode('blanks')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${mode === 'blanks' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${mode === 'blanks' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
         >
           <LayoutGrid size={16} />
           {t[lang].blanks}
         </button>
         <button 
           onClick={() => setMode('order')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${mode === 'order' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${mode === 'order' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
         >
           <ListOrdered size={16} />
           {t[lang].order}
         </button>
         <button 
           onClick={() => setMode('recite')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${mode === 'recite' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${mode === 'recite' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
         >
           <Mic size={16} />
           {t[lang].recite}
@@ -1652,7 +1579,7 @@ function BlanksGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
             return (
               <button
                 key={i} onClick={() => handleBlankClick(w.id)}
-                className={`min-w-[80px] h-10 px-4 rounded-xl border-2 flex items-center justify-center transition-colors ${filledWord ? 'bg-blue-50 border-blue-200 text-blue-700 font-bold' : 'bg-slate-50 border-dashed border-slate-300 text-slate-400'}`}
+                className={`min-w-[80px] h-10 px-4 rounded-xl border-2 flex items-center justify-center transition-colors ${filledWord ? 'bg-emerald-50 border-emerald-200 text-emerald-700 font-bold' : 'bg-slate-50 border-dashed border-slate-300 text-slate-400'}`}
               >
                 {filledWord || '___'}
               </button>
@@ -1667,7 +1594,7 @@ function BlanksGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
               <motion.button
                 key={opt.id} initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
                 onClick={() => handleOptionClick(opt)}
-                className="bg-white px-5 py-3 rounded-xl shadow-sm font-bold text-blue-600 border border-blue-100 hover:bg-blue-50 active:scale-95 transition-all"
+                className="bg-white px-5 py-3 rounded-xl shadow-sm font-bold text-emerald-600 border border-emerald-100 hover:bg-emerald-50 active:scale-95 transition-all"
               >
                 {opt.word}
               </motion.button>
@@ -1729,7 +1656,7 @@ function OrderGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: () 
               <motion.button
                 key={chunk.id} initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
                 onClick={() => deselectChunk(chunk)}
-                className="bg-blue-500 text-white px-4 py-2 rounded-xl font-bold shadow-sm"
+                className="bg-emerald-500 text-white px-4 py-2 rounded-xl font-bold shadow-sm"
               >
                 {chunk.text}
               </motion.button>
@@ -1765,12 +1692,16 @@ function OrderGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: () 
   );
 }
 
-// --- Game Mode 3: Recitation (Voice Recognition) ---
+// --- Game Mode 3: Recitation (Voice, Write, Self) ---
 function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: () => void, lang: Language }) {
+  const [subMode, setSubMode] = useState<'voice' | 'write' | 'self'>('voice');
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [result, setResult] = useState<{ score: number, matchedWords: boolean[], originalWords: string[] } | null>(null);
+  const [writeText, setWriteText] = useState('');
+  const [isSelfRevealed, setIsSelfRevealed] = useState(false);
+  const [result, setResult] = useState<{ score: number, matchedWords: boolean[], originalWords: string[], mistakes?: string[] } | null>(null);
   const [error, setError] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const recognitionRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
@@ -1782,7 +1713,7 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const rec = new SpeechRecognition();
-      rec.lang = 'ar-SA';
+      rec.lang = lang.includes('-') ? lang : (lang === 'ar' ? 'ar-SA' : lang === 'fr' ? 'fr-FR' : lang === 'es' ? 'es-ES' : 'en-US');
       rec.continuous = true;
       rec.interimResults = true;
 
@@ -1794,12 +1725,9 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
 
           if (i > 0) {
             const prevChunk = event.results[i-1][0].transcript.trim();
-            // Workaround for Android Chrome bug where it duplicates previous results
             if (prevChunk && chunk.startsWith(prevChunk)) {
               const newPart = chunk.substring(prevChunk.length).trim();
-              if (newPart) {
-                sessionString += newPart + ' ';
-              }
+              if (newPart) sessionString += newPart + ' ';
             } else {
               sessionString += chunk + ' ';
             }
@@ -1812,7 +1740,7 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       };
 
       rec.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
+        if (event.error === 'aborted' || event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
           setError(t[lang].micPermission);
           isRecordingRef.current = false;
@@ -1821,30 +1749,32 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       };
 
       rec.onend = () => {
-        // If the user didn't explicitly stop it, it means the browser paused it automatically.
-        // We need to restart it to keep listening!
         if (isRecordingRef.current) {
           if (currentSessionTranscriptRef.current) {
             fullTranscriptRef.current = (fullTranscriptRef.current + ' ' + currentSessionTranscriptRef.current).trim();
             currentSessionTranscriptRef.current = '';
           }
-          try {
-            rec.start();
-          } catch (e) {
-            console.error("Failed to restart recognition", e);
-            isRecordingRef.current = false;
-            setIsRecording(false);
-          }
+          setTimeout(() => {
+            if (isRecordingRef.current) {
+              try { recognitionRef.current?.start(); } catch (e) {}
+            }
+          }, 300);
         } else {
           setIsRecording(false);
         }
       };
 
       recognitionRef.current = rec;
+      return () => {
+        isRecordingRef.current = false;
+        rec.onend = null;
+        rec.onerror = null;
+        try { rec.stop(); } catch (e) {}
+      };
     } else {
-      setError(t[lang].speechNotSupported);
+      if (subMode === 'voice') setError(t[lang].speechNotSupported);
     }
-  }, [lang]);
+  }, [lang, subMode]);
 
   const toggleRecording = () => {
     if (isRecordingRef.current) {
@@ -1868,124 +1798,296 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
     }
   };
 
-  const checkRecitation = () => {
+  const checkRecitation = async (textToCheck: string) => {
     if (isRecordingRef.current) {
       isRecordingRef.current = false;
       setIsRecording(false);
       recognitionRef.current?.stop();
     }
 
-    const originalWords = lesson.text.split(' ').filter(w => w.trim() !== '' && w !== '۝');
+    const originalWords = lesson.text.split(/\s+/).filter(w => w.trim() !== '' && w !== '۝');
     const normalizedOriginal = originalWords.map(w => normalizeArabic(w));
-    const normalizedTranscript = normalizeArabic(transcript).split(' ').filter(w => w);
+    const normalizedTranscript = normalizeArabic(textToCheck).split(/\s+/).filter(w => w);
 
     if (normalizedTranscript.length === 0) {
        setError(t[lang].didNotHear);
        return;
     }
 
-    let matchCount = 0;
-    const matchedWords = normalizedOriginal.map((origWord) => {
-      // Forgiving match: check if the spoken words contain the target word
-      const found = normalizedTranscript.includes(origWord);
-      if (found) matchCount++;
-      return found;
-    });
+    setIsAnalyzing(true);
+    setError('');
 
-    const score = Math.round((matchCount / normalizedOriginal.length) * 100);
-    setResult({ score, matchedWords, originalWords });
+    try {
+      // --- LOCAL COMPARISON LOGIC (Strict Word Alignment) ---
+      const n = normalizedOriginal.length;
+      const m = normalizedTranscript.length;
+      const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+
+      // Initialize DP table
+      for (let i = 0; i <= n; i++) dp[i][0] = i;
+      for (let j = 0; j <= m; j++) dp[0][j] = j;
+
+      // Fill DP table
+      for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+          const cost = normalizedOriginal[i - 1] === normalizedTranscript[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(
+            dp[i - 1][j] + 1,       // deletion (word missed)
+            dp[i][j - 1] + 1,       // insertion (extra word said)
+            dp[i - 1][j - 1] + cost // substitution (wrong word)
+          );
+        }
+      }
+
+      // Backtrack to find exactly which original words were matched in the correct order
+      const matchedWords = new Array(n).fill(false);
+      const rawMistakes: { type: 'sub'|'del'|'ins', origIdx: number, transIdx: number }[] = [];
+      let i = n;
+      let j = m;
+
+      while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && normalizedOriginal[i - 1] === normalizedTranscript[j - 1] && dp[i][j] === dp[i - 1][j - 1]) {
+          // Exact match
+          matchedWords[i - 1] = true;
+          i--;
+          j--;
+        } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) {
+          // Substitution
+          rawMistakes.unshift({ type: 'sub', origIdx: i - 1, transIdx: j - 1 });
+          i--;
+          j--;
+        } else if (i > 0 && dp[i][j] === dp[i - 1][j] + 1) {
+          // Deletion (missed word)
+          rawMistakes.unshift({ type: 'del', origIdx: i - 1, transIdx: -1 });
+          i--;
+        } else {
+          // Insertion (extra word)
+          rawMistakes.unshift({ type: 'ins', origIdx: i - 1, transIdx: j - 1 });
+          j--;
+        }
+      }
+
+      // Process rawMistakes to generate human-readable grouped messages
+      const mistakes: string[] = [];
+      let currentGroup: any[] = [];
+      
+      const flushGroup = () => {
+        if (currentGroup.length === 0) return;
+        const type = currentGroup[0].type;
+        const isAr = lang.startsWith('ar');
+        
+        if (type === 'del') {
+          const words = currentGroup.map(m => originalWords[m.origIdx]).join(' ');
+          mistakes.push(isAr ? `نقصان في القراءة (كلمة/آية): "${words}"` : `Missing words: "${words}"`);
+        } else if (type === 'ins') {
+          const addedWords = currentGroup.map(m => normalizedTranscript[m.transIdx]).join(' ');
+          const afterIdx = currentGroup[0].origIdx;
+          const afterWord = isAr 
+            ? (afterIdx >= 0 ? `بعد كلمة "${originalWords[afterIdx]}"` : "في بداية القراءة")
+            : (afterIdx >= 0 ? `after word "${originalWords[afterIdx]}"` : "at the beginning");
+          mistakes.push(isAr ? `زيادة في القراءة: قرأت "${addedWords}" ${afterWord}` : `Extra words: you said "${addedWords}" ${afterWord}`);
+        } else if (type === 'sub') {
+          currentGroup.forEach(m => {
+            const originalWord = originalWords[m.origIdx];
+            const transcriptWord = normalizedTranscript[m.transIdx];
+            const existsElsewhere = normalizedOriginal.includes(transcriptWord);
+            
+            if (existsElsewhere) {
+              mistakes.push(isAr 
+                ? `إخلال بالترتيب (كلمة في غير موضعها): قرأت "${transcriptWord}" بدلاً من "${originalWord}"`
+                : `Order violation (word out of place): you said "${transcriptWord}" instead of "${originalWord}"`);
+            } else {
+              mistakes.push(isAr 
+                ? `خطأ في النطق (كلمة غير صحيحة): قرأت "${transcriptWord}" بدلاً من "${originalWord}"`
+                : `Pronunciation error (incorrect word): you said "${transcriptWord}" instead of "${originalWord}"`);
+            }
+          });
+        }
+        currentGroup = [];
+      };
+
+      for (const m of rawMistakes) {
+        if (currentGroup.length === 0 || currentGroup[currentGroup.length - 1].type === m.type) {
+          currentGroup.push(m);
+        } else {
+          flushGroup();
+          currentGroup.push(m);
+        }
+      }
+      flushGroup();
+
+      // Calculate strict score
+      const maxDistance = Math.max(n, m);
+      const distance = dp[n][m];
+      // If maxDistance is 0, score is 100. Otherwise, calculate percentage.
+      const score = maxDistance === 0 ? 100 : Math.max(0, Math.round(((maxDistance - distance) / maxDistance) * 100));
+      
+      setResult({ score, matchedWords, originalWords, mistakes });
+    } catch (e: any) {
+      console.error("Analysis error:", e);
+      setError(t[lang].errorAnalyzingRecitation || "Error analyzing recitation. Please try again.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
-    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-1 flex flex-col items-center text-center overflow-y-auto">
-      {error && (
-        <div className="bg-red-50 text-red-600 p-3 rounded-xl mb-4 text-sm w-full font-bold">
-          {error}
-        </div>
-      )}
+    <div className="flex flex-col gap-6 h-full overflow-y-auto pb-8">
+      {/* Sub-Mode Selector */}
+      <div className="flex bg-slate-100 p-1 rounded-2xl shadow-inner">
+        <button 
+          onClick={() => { setSubMode('voice'); setResult(null); }}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${subMode === 'voice' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500'}`}
+        >
+          <Mic size={18} />
+          {t[lang].voice}
+        </button>
+        <button 
+          onClick={() => { setSubMode('write'); setResult(null); }}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${subMode === 'write' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500'}`}
+        >
+          <Edit3 size={18} />
+          {t[lang].write}
+        </button>
+        <button 
+          onClick={() => { setSubMode('self'); setResult(null); }}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${subMode === 'self' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500'}`}
+        >
+          <Eye size={18} />
+          {t[lang].self}
+        </button>
+      </div>
 
-      {!result ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center w-full flex-1 justify-center">
-          <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-colors ${isRecording ? 'bg-red-100' : 'bg-blue-50'}`}>
-            <Mic size={40} className={isRecording ? "text-red-500 animate-pulse" : "text-blue-500"} />
+      <div className="bg-white p-6 sm:p-8 rounded-[32px] shadow-lg border border-slate-100 flex-1 flex flex-col items-center">
+        {isAnalyzing && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
+            <p className="text-slate-500 font-bold">{lang.startsWith('ar') ? "جاري التحليل..." : "Analyzing..."}</p>
           </div>
-          <h3 className="text-xl font-bold text-slate-800 mb-2">{t[lang].smartRecitationChallenge}</h3>
-          <p className="text-slate-500 mb-6">{t[lang].recitationInstructions}</p>
-          
-          {transcript && (
-            <div className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-6 min-h-[80px]">
-              <p className="text-slate-700 font-medium">{transcript}</p>
+        )}
+
+        {!isAnalyzing && !result && (
+          <>
+            {subMode === 'voice' && (
+              <>
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-all ${isRecording ? 'bg-red-100 text-red-500 animate-pulse scale-110' : 'bg-emerald-100 text-emerald-600'}`}>
+                  <Mic size={40} />
+                </div>
+                <p className="text-slate-500 text-center mb-8 font-medium">{isRecording ? t[lang].listening : t[lang].clickMicToStart}</p>
+                <div className="w-full bg-slate-50 p-6 rounded-3xl border-2 border-slate-100 min-h-[120px] mb-8 text-center">
+                  <p className="text-xl leading-relaxed text-slate-700 italic">{transcript || "..."}</p>
+                </div>
+                {error && <p className="text-red-500 text-sm mb-4 font-bold">{error}</p>}
+                <div className="flex gap-4 w-full">
+                  <button onClick={toggleRecording} className={`flex-1 py-5 rounded-2xl font-bold text-lg shadow-lg transition-all focus:ring-4 outline-none ${isRecording ? 'bg-red-500 text-white shadow-red-100 focus:ring-red-300' : 'bg-emerald-500 text-white shadow-emerald-100 focus:ring-emerald-300'}`}>
+                    {isRecording ? t[lang].stop : t[lang].start}
+                  </button>
+                  {transcript && (
+                    <button onClick={() => checkRecitation(transcript)} className="flex-1 bg-blue-500 text-white py-5 rounded-2xl font-bold text-lg shadow-lg shadow-blue-100 hover:bg-blue-600 focus:ring-4 focus:ring-blue-300 outline-none transition-all flex items-center justify-center gap-2">
+                      <Check /> {t[lang].check}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {subMode === 'write' && (
+              <div className="w-full flex flex-col">
+                <textarea 
+                  value={writeText} onChange={(e) => setWriteText(e.target.value)}
+                  placeholder={t[lang].typeHere}
+                  className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-3xl focus:ring-2 focus:ring-emerald-500 outline-none min-h-[180px] text-xl font-arabic mb-6 resize-none"
+                  dir="auto"
+                />
+                <button onClick={() => checkRecitation(writeText)} disabled={!writeText.trim()} className="w-full bg-emerald-500 text-white py-5 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-100 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-2">
+                  <Check /> {t[lang].check}
+                </button>
+              </div>
+            )}
+
+            {subMode === 'self' && (
+              <div className="w-full flex flex-col items-center">
+                <div className="w-full bg-emerald-50/50 p-8 rounded-[32px] border-2 border-emerald-100/50 mb-8 min-h-[160px] flex items-center justify-center relative overflow-hidden">
+                  <AnimatePresence mode="wait">
+                    {isSelfRevealed ? (
+                      <motion.p key="revealed" initial={{ opacity: 0, filter: 'blur(10px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} className="text-2xl sm:text-3xl leading-relaxed font-arabic text-slate-800 text-center">
+                        {lesson.text}
+                      </motion.p>
+                    ) : (
+                      <motion.div key="hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-4">
+                        <div className="flex gap-2">
+                          {[1,2,3,4,5].map(i => <div key={i} className="w-3 h-3 bg-emerald-200 rounded-full animate-pulse" style={{ animationDelay: `${i*0.2}s` }} />)}
+                        </div>
+                        <p className="text-emerald-600 font-bold">{t[lang].reciteThenReveal}</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div className="flex gap-4 w-full">
+                  <button onClick={() => setIsSelfRevealed(!isSelfRevealed)} className="flex-1 bg-slate-100 text-slate-700 py-5 rounded-2xl font-bold text-lg border-2 border-slate-200 hover:bg-slate-200 focus:ring-4 focus:ring-slate-300 outline-none transition-all flex items-center justify-center gap-2">
+                    {isSelfRevealed ? <EyeOff /> : <Eye />} {isSelfRevealed ? t[lang].hideAyah : t[lang].showAyah}
+                  </button>
+                  <button onClick={() => onSuccess()} className="flex-1 bg-emerald-500 text-white py-5 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-100 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-2">
+                    <Check /> {t[lang].wellDone}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {result && (
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full flex flex-col items-center">
+            <div className="mb-6 text-center">
+              <div className="text-5xl mb-2">{result.score === 100 ? '🌟' : '💪'}</div>
+              <h3 className={`text-2xl font-bold ${result.score >= 80 ? 'text-green-500' : 'text-amber-500'}`}>
+                {t[lang].resultScore.replace('{score}', String(result.score))}
+              </h3>
             </div>
-          )}
-
-          <div className="flex gap-3 w-full mt-auto">
-            <button 
-              onClick={toggleRecording}
-              className={`flex-1 py-4 rounded-2xl font-bold text-lg transition-colors shadow-sm ${isRecording ? 'bg-red-500 text-white shadow-red-200' : 'bg-slate-800 text-white shadow-slate-200'}`}
-            >
-              {isRecording ? t[lang].stopRecording : t[lang].startReciting}
-            </button>
-
-            {transcript && !isRecording && (
-              <button 
-                onClick={checkRecitation}
-                className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 shadow-md shadow-blue-200"
-              >
-                <Check size={20} />
-                {t[lang].checkMyMemorization}
-              </button>
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8 w-full text-right leading-loose text-xl font-medium">
+              {result.originalWords.map((word, index) => (
+                <span key={index} className={`inline-block mx-1 px-1 rounded ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300'}`}>
+                  {word}
+                </span>
+              ))}
+            </div>
+            {result.mistakes && result.mistakes.length > 0 && (
+              <div className="w-full text-right mb-8 bg-red-50 p-4 rounded-2xl border border-red-100">
+                <h4 className="font-bold text-red-700 mb-3 text-lg flex items-center gap-2 justify-end">
+                  {lang.startsWith('ar') ? 'ملاحظات:' : 'Notes:'} <AlertCircle size={20} />
+                </h4>
+                <ul className="list-disc list-inside text-red-600 space-y-1">
+                  {result.mistakes.map((mistake, idx) => <li key={idx} className="text-base">{mistake}</li>)}
+                </ul>
+              </div>
             )}
-          </div>
-        </motion.div>
-      ) : (
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full flex flex-col items-center">
-          <div className="mb-6 text-center">
-            <div className="text-5xl mb-2">{result.score >= 80 ? '🌟' : '💪'}</div>
-            <h3 className={`text-2xl font-bold ${result.score >= 80 ? 'text-green-500' : 'text-amber-500'}`}>
-              {t[lang].resultScore.replace('{score}', String(result.score))}
-            </h3>
-            <p className="text-slate-500 mt-1">
-              {result.score >= 80 ? t[lang].excellentMemorization : t[lang].goodTryReview}
-            </p>
-          </div>
-
-          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8 w-full text-right leading-loose text-xl font-medium">
-            {result.originalWords.map((word, index) => (
-              <span 
-                key={index} 
-                className={`inline-block mx-1 px-1 rounded ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300'}`}
-              >
-                {word}
-              </span>
-            ))}
-          </div>
-          
-          <div className="flex gap-3 w-full">
-            <button 
-              onClick={() => { setResult(null); setTranscript(''); }}
-              className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex flex-col items-center gap-1 hover:bg-slate-200"
-            >
-              <RefreshCw size={20} />
-              {t[lang].reciteAgain}
-            </button>
-            {result.score >= 80 && (
-              <button 
-                onClick={onSuccess}
-                className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-bold flex flex-col items-center gap-1 shadow-md shadow-green-200"
-              >
-                <Coins size={20} />
-                {t[lang].claimReward}
+            <div className="flex gap-3 w-full">
+              <button onClick={() => { setResult(null); setTranscript(''); setWriteText(''); setIsSelfRevealed(false); }} className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex flex-col items-center gap-1 hover:bg-slate-200">
+                <RefreshCw size={20} /> {t[lang].reciteAgain}
               </button>
-            )}
-          </div>
-        </motion.div>
-      )}
+              {result.score >= 80 && (
+                <button onClick={onSuccess} className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-bold flex flex-col items-center gap-1 shadow-md shadow-green-200">
+                  <Coins size={20} /> {t[lang].claimReward}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }
 
 // --- Parent Screen (Dashboard) ---
-function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLessons: React.Dispatch<React.SetStateAction<Lesson[]>>, lang: Language }) {
+function ParentScreen({ lessons, setLessons, lang, setLang, isPremium, onUpgrade, setIsRemoteModalOpen }: { 
+  lessons: Lesson[], 
+  setLessons: React.Dispatch<React.SetStateAction<Lesson[]>>, 
+  lang: Language, 
+  setLang: React.Dispatch<React.SetStateAction<Language>>,
+  isPremium: boolean,
+  onUpgrade: () => void,
+  setIsRemoteModalOpen: React.Dispatch<React.SetStateAction<boolean>>
+}) {
   const [addMode, setAddMode] = useState<'custom' | 'quran'>('quran');
   
   // Custom text state
@@ -2000,14 +2102,22 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
   const [isLoadingQuran, setIsLoadingQuran] = useState(false);
 
   const handleAddCustom = () => {
+    if (!isPremium && lessons.length >= 5) {
+      onUpgrade();
+      return;
+    }
     if (newTitle.trim() && newText.trim()) {
-      setLessons([...lessons, { id: Date.now().toString(), title: newTitle, text: newText }]);
+      setLessons([...lessons, { id: Date.now().toString(), title: newTitle, text: newText, type: 'custom' }]);
       setNewTitle('');
       setNewText('');
     }
   };
 
   const handleAddQuran = async () => {
+    if (!isPremium && lessons.length >= 5) {
+      onUpgrade();
+      return;
+    }
     setIsLoadingQuran(true);
     try {
       const data = await fetchAyahs(selectedSurah, startAyah, endAyah);
@@ -2018,7 +2128,7 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
       const surahName = data.surahName;
       const title = `${surahName} ${t[lang].ayahsRange.replace('{start}', String(startAyah)).replace('{end}', String(endAyah))}`;
       
-      setLessons([...lessons, { id: Date.now().toString(), title, text }]);
+      setLessons([...lessons, { id: Date.now().toString(), title, text, type: 'quran' }]);
       alert(t[lang].ayahsAddedSuccessfully);
     } catch (e) {
       alert(t[lang].errorFetchingAyahsCheckInternet);
@@ -2040,19 +2150,70 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
         {t[lang].parentDashboard}
       </h2>
 
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+            <ImageIcon size={24} />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-800">{t[lang].remoteUploadTitle}</h3>
+            <p className="text-sm text-slate-500">{t[lang].connectPhone}</p>
+          </div>
+        </div>
+        <button 
+          onClick={() => setIsRemoteModalOpen(true)}
+          className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2"
+        >
+          <Plus size={18} />
+          {t[lang].connectPhone}
+        </button>
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-slate-500 text-sm uppercase tracking-wider mb-1">{t[lang].currentPlan}</h3>
+          <div className="flex items-center gap-2">
+            <span className={`text-xl font-black ${isPremium ? 'text-emerald-600' : 'text-slate-800'}`}>
+              {isPremium ? t[lang].premium : t[lang].free}
+            </span>
+            {isPremium && <Star size={18} className="text-amber-400" fill="currentColor" />}
+          </div>
+        </div>
+        {!isPremium && (
+          <button 
+            onClick={onUpgrade}
+            className="bg-emerald-600 text-white px-6 py-2 rounded-full font-bold text-sm shadow-md shadow-emerald-100 hover:bg-emerald-700 transition-all"
+          >
+            {t[lang].upgrade}
+          </button>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6">
+        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+          <Languages className="text-emerald-500" size={20} />
+          {t[lang].textLanguage}
+        </h3>
+        <CustomSelect 
+          value={lang}
+          onChange={(val) => setLang(val)}
+          options={APP_LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
+        />
+      </div>
+
       <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 mb-8">
         {/* Mode Toggle */}
         <div className="flex bg-slate-100 p-1 rounded-2xl mb-6">
           <button 
             onClick={() => setAddMode('quran')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${addMode === 'quran' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${addMode === 'quran' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
           >
             <Book size={16} />
             {t[lang].quran}
           </button>
           <button 
             onClick={() => setAddMode('custom')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${addMode === 'custom' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-bold transition-colors ${addMode === 'custom' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
           >
             <Edit3 size={16} />
             {t[lang].customTexts}
@@ -2067,14 +2228,14 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
               placeholder={t[lang].taskTitle}
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             <textarea 
               placeholder={t[lang].taskText}
               value={newText}
               onChange={(e) => setNewText(e.target.value)}
               rows={4}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
             <button 
               onClick={handleAddCustom}
@@ -2091,7 +2252,7 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
             
             {surahs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-slate-400">
-                <Loader2 className="animate-spin mb-2 text-blue-500" size={32} />
+                <Loader2 className="animate-spin mb-2 text-emerald-500" size={32} />
                 <p>{t[lang].loadingSurahs}</p>
               </div>
             ) : (
@@ -2120,7 +2281,7 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
                       max={maxAyahs}
                       value={startAyah}
                       onChange={(e) => setStartAyah(Math.min(maxAyahs, Math.max(1, parseInt(e.target.value) || 1)))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                   <div className="flex-1">
@@ -2131,7 +2292,7 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
                       max={maxAyahs}
                       value={endAyah}
                       onChange={(e) => setEndAyah(Math.min(maxAyahs, Math.max(startAyah, parseInt(e.target.value) || startAyah)))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
@@ -2139,7 +2300,7 @@ function ParentScreen({ lessons, setLessons, lang }: { lessons: Lesson[], setLes
                 <button 
                   onClick={handleAddQuran}
                   disabled={isLoadingQuran}
-                  className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-blue-700 transition-colors"
+                  className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-emerald-700 transition-colors"
                 >
                   {isLoadingQuran ? <Loader2 className="animate-spin" size={20} /> : <Book size={20} />}
                   {isLoadingQuran ? '...' : t[lang].addAyahs}

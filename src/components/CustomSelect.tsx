@@ -30,9 +30,9 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
   }, []);
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
+    <div className={`relative w-full ${isOpen ? 'z-[1000]' : 'z-10'}`} ref={dropdownRef}>
       <div 
-        className={`flex items-center justify-between w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl cursor-pointer select-none ${className}`}
+        className={`flex items-center justify-between w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl cursor-pointer select-none transition-all ${isOpen ? 'ring-2 ring-emerald-500 border-transparent bg-white shadow-sm' : ''} ${className}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <span className="text-slate-700 font-medium truncate">{selectedOption?.label}</span>
@@ -40,7 +40,7 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
       </div>
       
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto">
+        <div className="absolute z-[1001] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-60 overflow-y-auto animate-in fade-in zoom-in duration-200">
           {options.map((option) => (
             <div
               key={option.value}

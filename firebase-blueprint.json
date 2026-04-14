@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "RemoteUpload": {
+      "title": "Remote Upload",
+      "description": "A file uploaded remotely from a phone to be viewed on a TV.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deviceId": { "type": "string", "description": "The target TV device ID" },
+        "type": { "type": "string", "enum": ["image", "audio", "video"] },
+        "url": { "type": "string", "format": "uri" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "completed"] }
+      },
+      "required": ["deviceId", "type", "url", "createdAt"]
+    },
+    "DevicePairing": {
+      "title": "Device Pairing",
+      "description": "Information about a paired device session.",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string" },
+        "lastActive": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deviceId", "lastActive"]
+    }
+  },
+  "firestore": {
+    "/uploads/{uploadId}": {
+      "schema": "RemoteUpload",
+      "description": "Collection of remote uploads"
+    },
+    "/pairings/{deviceId}": {
+      "schema": "DevicePairing",
+      "description": "Collection of active device pairings"
+    }
+  }
+}

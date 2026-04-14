@@ -579,10 +579,41 @@ export const getGlobalAyahNumber = (surahNumber: number, ayahNumberInSurah: numb
   return count + ayahNumberInSurah;
 };
 
+export const getAudioUrl = (reciterId: string, surah: number, ayah: number) => {
+  const s = String(surah).padStart(3, '0');
+  const a = String(ayah).padStart(3, '0');
+  
+  if (reciterId.toLowerCase().includes('kbps')) {
+    // everyayah.com format
+    return `https://mirrors.quranicaudio.com/everyayah/${reciterId}/${s}${a}.mp3`;
+  }
+  
+  if (reciterId.startsWith('http')) {
+    // Direct Surah-based URL (mp3quran)
+    return `${reciterId}${s}.mp3`;
+  }
+
+  // Fallback to global number (islamic.network format)
+  return `https://cdn.islamic.network/quran/audio/64/${reciterId}/${getGlobalAyahNumber(surah, ayah)}.mp3`;
+};
+
 export const fetchAyahs = async (surahNumber: number, fromAyah: number, toAyah: number) => {
   const cacheKey = `quran-surah-${surahNumber}`;
   let data: any = null;
   let usedSecondary = false;
+
+  const fetchWithTimeout = async (url: string, options = {}, timeout = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (error) {
+      clearTimeout(id);
+      throw error;
+    }
+  };
 
   try {
     const cache = await caches.open('quran-data');
@@ -591,7 +622,7 @@ export const fetchAyahs = async (surahNumber: number, fromAyah: number, toAyah: 
       data = await cachedRes.json();
     } else {
       // Try primary API
-      const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}`);
+      const res = await fetchWithTimeout(`https://api.alquran.cloud/v1/surah/${surahNumber}`);
       if (!res.ok) throw new Error('Primary API failed');
       data = await res.json();
       if (data.code !== 200) throw new Error('Primary API returned error code');
@@ -609,7 +640,7 @@ export const fetchAyahs = async (surahNumber: number, fromAyah: number, toAyah: 
         usedSecondary = true;
       } else {
         // Try secondary API
-        const res = await fetch(`https://quranapi.pages.dev/api/${surahNumber}.json`);
+        const res = await fetchWithTimeout(`https://quranapi.pages.dev/api/${surahNumber}.json`);
         if (!res.ok) throw new Error('Secondary API failed');
         data = await res.json();
         cache.put(cacheKey, new Response(JSON.stringify(data)));
@@ -653,17 +684,35 @@ export const downloadSurahAudio = async (surahNumber: number, fromAyah: number, 
   let downloaded = 0;
   const total = data.ayahs.length;
   
-  for (const ayah of data.ayahs) {
-    const url = `https://cdn.islamic.network/quran/audio/128/${reciter}/${ayah.globalNumber}.mp3`;
+  // If it's a Surah-based reciter (mp3quran), we only need to download the full surah once
+  if (reciter.startsWith('http')) {
+    const url = getAudioUrl(reciter, surahNumber, 1);
     const cachedRes = await cache.match(url);
     if (!cachedRes) {
       try {
-        const res = await fetch(url, { mode: 'no-cors' });
-        // For opaque responses (no-cors), res.ok is false and status is 0.
-        // We just cache it anyway.
-        await cache.put(url, res);
+        const res = await fetch(url, { mode: 'cors' });
+        if (res.ok) {
+          await cache.put(url, res);
+        }
       } catch (e) {
-        console.error("Failed to download audio", url, e);
+        console.error("Failed to download surah audio", e);
+      }
+    }
+    onProgress(100);
+    return;
+  }
+  
+  for (const ayah of data.ayahs) {
+    const url = getAudioUrl(reciter, surahNumber, ayah.numberInSurah);
+    const cachedRes = await cache.match(url);
+    if (!cachedRes) {
+      try {
+        const res = await fetch(url, { mode: 'cors' });
+        if (res.ok) {
+          await cache.put(url, res);
+        }
+      } catch (e) {
+        console.error(`Failed to download ayah ${ayah.numberInSurah}`, e);
       }
     }
     downloaded++;

@@ -1,0 +1,73 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: uploads
+// Document ID: auto-generated
+// Fields:
+//   - deviceId: string (required) - The target TV device ID
+//   - type: string (required, enum: ['image', 'audio', 'video'])
+//   - url: string (required, format: uri)
+//   - name: string (optional)
+//   - createdAt: timestamp (required)
+//   - status: string (optional, enum: ['pending', 'completed'])
+//
+// Collection: pairings
+// Document ID: deviceId
+// Fields:
+//   - deviceId: string (required)
+//   - lastActive: timestamp (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*") || url.matches("^data:.*"));
+    }
+
+    function isValidUpload(data) {
+      return data.deviceId is string && data.deviceId.size() > 0 && data.deviceId.size() < 100 &&
+             data.type in ['image', 'audio', 'video'] &&
+             isValidUrl(data.url) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidPairing(data) {
+      return data.deviceId is string && data.deviceId.size() > 0 &&
+             data.lastActive is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /uploads/{uploadId} {
+      // Allow anyone to create an upload (phone side)
+      // In a real app, we'd use anonymous auth or specific tokens
+      // For this prototype, we allow public creation but strict validation
+      allow create: if isValidUpload(request.resource.data);
+      
+      // Allow reading if the deviceId matches (TV side)
+      // This is a simplified pairing logic for the prototype
+      allow read: if true; 
+      
+      // Allow deletion by the device
+      allow delete: if true;
+    }
+
+    match /pairings/{deviceId} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -1,18 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { 
   BookOpen, Sparkles, Mic, TreePine, Users, 
   ArrowLeft, ArrowRight, CheckCircle2, Play, ShieldCheck,
-  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe
+  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon
 } from 'lucide-react';
 import { landingTranslations, languages } from './landing-translations';
 
 export function LandingPage() {
   const [lang, setLang] = useState('ar');
-  const t = landingTranslations[lang] || landingTranslations['ar'];
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  // Merge selected language with English as fallback for missing keys
+  const t = {
+    ...landingTranslations['en'],
+    ...(landingTranslations[lang] || landingTranslations['ar'])
+  };
+  
   const currentLang = languages.find(l => l.code === lang) || languages[0];
   const isRtl = currentLang.dir === 'rtl';
+
+  useEffect(() => {
+    document.title = `${t.app_name} - ${t.hero_title1} ${t.hero_title2}`;
+    document.documentElement.dir = currentLang.dir;
+    document.documentElement.lang = lang;
+  }, [lang, t, currentLang]);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans" dir={currentLang.dir}>
@@ -21,14 +34,16 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
-              <img src="/logo.svg" alt="Hoffad Logo" className="w-8 h-8 object-contain" />
-              <span className="font-bold text-xl text-emerald-700">Hoffad</span>
+              <img src="/logo.svg" alt={`${t.app_name} Logo`} className="w-8 h-8 object-contain" />
+              <span className="font-bold text-xl text-emerald-700">{t.app_name}</span>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="relative group hidden sm:block">
-                <button className="flex items-center gap-1 text-slate-600 hover:text-emerald-600 font-medium transition-colors">
+            
+            <div className="flex items-center gap-2 sm:gap-4">
+              {/* Language Selector - Visible on all screens */}
+              <div className="relative group">
+                <button className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 font-medium transition-all text-sm sm:text-base">
                   <Globe size={18} />
-                  <span>{currentLang.name}</span>
+                  <span className="hidden xs:inline">{currentLang.name}</span>
                 </button>
                 <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50" style={isRtl ? { left: 0 } : { right: 0 }}>
                   <div className="max-h-64 overflow-y-auto py-2">
@@ -45,15 +60,17 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
+
               <Link 
                 to="/app" 
-                className="text-slate-600 hover:text-emerald-600 font-medium transition-colors hidden sm:block"
+                className="text-slate-600 hover:text-emerald-600 font-medium transition-colors hidden md:block"
               >
                 {t.nav_login}
               </Link>
+              
               <Link 
                 to="/app" 
-                className="bg-emerald-600 text-white px-5 py-2 rounded-full font-medium hover:bg-emerald-700 transition-colors shadow-sm hover:shadow-md flex items-center gap-2"
+                className="bg-emerald-600 text-white px-4 sm:px-5 py-2 rounded-full font-medium hover:bg-emerald-700 transition-colors shadow-sm hover:shadow-md flex items-center gap-2 text-sm sm:text-base"
               >
                 <span>{t.nav_start}</span>
                 {isRtl ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
@@ -158,7 +175,7 @@ export function LandingPage() {
                 icon: <BrainCircuit size={32} />,
                 title: t.feat1_title,
                 desc: t.feat1_desc,
-                color: "bg-blue-50 text-blue-600"
+                color: "bg-emerald-50 text-emerald-600"
               },
               {
                 icon: <Mic size={32} />,
@@ -258,17 +275,48 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* Legal & Warning Section */}
+      <section id="legal" className="py-16 bg-white border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-3 gap-12">
+            <div className={`p-6 rounded-2xl bg-amber-50 border border-amber-100 ${isRtl ? 'text-right' : 'text-left'}`}>
+              <div className="flex items-center gap-2 text-amber-700 font-bold mb-3">
+                <ShieldCheck size={20} />
+                <span>{t.warning?.split(':')[0] || 'Warning'}</span>
+              </div>
+              <p className="text-amber-800 text-sm leading-relaxed">
+                {t.warning}
+              </p>
+            </div>
+            
+            <div id="privacy" className={isRtl ? 'text-right' : 'text-left'}>
+              <h3 className="font-bold text-slate-900 mb-4">{t.privacy_policy}</h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                {t.privacy_desc}
+              </p>
+            </div>
+
+            <div id="terms" className={isRtl ? 'text-right' : 'text-left'}>
+              <h3 className="font-bold text-slate-900 mb-4">{t.terms_of_use}</h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                {t.terms_desc}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-12 text-center">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-center gap-2 mb-6 opacity-50 grayscale">
-            <img src="/logo.svg" alt="Hoffad Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xl text-white">Hoffad</span>
+            <img src="/logo.svg" alt={`${t.app_name} Logo`} className="w-8 h-8 object-contain" />
+            <span className="font-bold text-xl text-white">{t.app_name}</span>
           </div>
-          <p className="mb-6">{t.footer_rights} &copy; {new Date().getFullYear()} Hoffad</p>
+          <p className="mb-6">{t.footer_rights} &copy; {new Date().getFullYear()} {t.app_name}</p>
           <div className="flex justify-center gap-6 text-sm">
-            <a href="#" className="hover:text-white transition-colors">{t.footer_privacy}</a>
-            <a href="#" className="hover:text-white transition-colors">{t.footer_terms}</a>
+            <a href="#privacy" className="hover:text-white transition-colors">{t.footer_privacy}</a>
+            <a href="#terms" className="hover:text-white transition-colors">{t.footer_terms}</a>
             <a href="#" className="hover:text-white transition-colors">{t.footer_contact}</a>
           </div>
         </div>
