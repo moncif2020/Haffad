@@ -35,3 +35,34 @@
   --color-red-600: #fca5a5;
   --color-red-700: #f87171;
 }
+
+/* Custom Scrollbar for TV and Desktop */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 3px solid #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Force scrollbar visibility on elements with .force-scrollbar */
+.force-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.force-scrollbar::-webkit-scrollbar {
+  display: block;
+}

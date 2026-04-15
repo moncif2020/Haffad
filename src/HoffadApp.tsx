@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera } from 'lucide-react';
+import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, ChevronUp, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera } from 'lucide-react';
 import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl } from './lib/quran';
 import { MushafViewer } from './components/MushafViewer';
 import { CustomSelect } from './components/CustomSelect';
@@ -845,8 +845,12 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error("Login Error:", error);
-      if (error.code === 'auth/internal-error') {
-        alert(lang.startsWith('ar') ? "خطأ داخلي في تسجيل الدخول. يرجى التأكد من السماح بالنوافذ المنبثقة وإضافة النطاق إلى قائمة النطاقات المصرح بها في Firebase." : "Internal login error. Please ensure popups are allowed and the domain is added to the Authorized Domains in Firebase Console.");
+      if (error.code === 'auth/internal-error' || error.code === 'auth/network-request-failed') {
+        alert(lang.startsWith('ar') 
+          ? "خطأ داخلي في تسجيل الدخول. يرجى التأكد من السماح بالنوافذ المنبثقة وإضافة النطاق الحالي إلى قائمة النطاقات المصرح بها (Authorized Domains) في Firebase Console." 
+          : "Internal login error. Please ensure popups are allowed and the current domain is added to the Authorized Domains in Firebase Console.");
+      } else if (error.code === 'auth/popup-blocked') {
+        alert(lang.startsWith('ar') ? "تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة للموقع." : "Popup blocked. Please allow popups for this site.");
       } else {
         alert(lang.startsWith('ar') ? "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى." : "Login failed. Please try again.");
       }
@@ -1109,21 +1113,40 @@ export default function App() {
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute top-full mt-2 start-0 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[1000] py-2 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent"
+                  className="absolute top-full mt-2 start-0 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[1000] overflow-hidden flex flex-col"
                 >
-                  {APP_LANGUAGES.map((l) => (
-                    <button
-                      key={l.code}
-                      onClick={() => {
-                        setLang(l.code);
-                        setIsLangMenuOpen(false);
-                      }}
-                      className={`w-full text-start px-4 py-3 text-sm font-medium transition-colors flex items-center justify-between ${lang === l.code ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <span>{l.name}</span>
-                      {lang === l.code && <Check size={16} />}
-                    </button>
-                  ))}
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); document.getElementById('app-lang-scroll')?.scrollBy({ top: -100, behavior: 'smooth' }); }}
+                    className="w-full flex justify-center py-1 bg-slate-50 hover:bg-slate-100 text-slate-400 border-b border-slate-100"
+                  >
+                    <ChevronUp size={18} />
+                  </button>
+
+                  <div id="app-lang-scroll" className="max-h-[40vh] overflow-y-auto py-2 force-scrollbar scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+                    {APP_LANGUAGES.map((l) => (
+                      <button
+                        key={l.code}
+                        onClick={() => {
+                          setLang(l.code);
+                          setIsLangMenuOpen(false);
+                        }}
+                        onFocus={(e) => e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                        className={`w-full text-start px-4 py-3 text-sm font-medium transition-colors flex items-center justify-between focus:bg-emerald-50 focus:outline-none ${lang === l.code ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <span>{l.name}</span>
+                        {lang === l.code && <Check size={16} />}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); document.getElementById('app-lang-scroll')?.scrollBy({ top: 100, behavior: 'smooth' }); }}
+                    className="w-full flex justify-center py-1 bg-slate-50 hover:bg-slate-100 text-slate-400 border-t border-slate-100"
+                  >
+                    <ChevronDown size={18} />
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>

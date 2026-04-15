@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, Sparkles, Mic, TreePine, Users, 
   ArrowLeft, ArrowRight, CheckCircle2, Play, ShieldCheck,
-  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon, LogIn, Monitor, X
+  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon, LogIn, Monitor, X, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { landingTranslations, languages } from './landing-translations';
@@ -62,10 +62,20 @@ export function LandingPage() {
       navigate('/app');
     } catch (error: any) {
       console.error("Login Error:", error);
-      if (error.code === 'auth/internal-error') {
+      if (error.code === 'auth/internal-error' || error.code === 'auth/network-request-failed') {
         // If it's a TV or blocked user agent, suggest TV login
         setIsTVModalOpen(true);
         handleTVLogin();
+        
+        // Also show a more descriptive alert if they aren't on a TV
+        const isTV = /SmartTV|Tizen|WebOS|AppleTV|Roku|FireTV/i.test(navigator.userAgent);
+        if (!isTV) {
+          alert(lang === 'ar' 
+            ? "حدث خطأ داخلي. يرجى التأكد من:\n1. السماح بالنوافذ المنبثقة (Popups).\n2. إضافة هذا النطاق إلى 'Authorized Domains' في Firebase Console.\n3. تفعيل ملفات تعريف الارتباط للطرف الثالث." 
+            : "Internal error occurred. Please ensure:\n1. Popups are allowed.\n2. This domain is added to 'Authorized Domains' in Firebase Console.\n3. Third-party cookies are enabled.");
+        }
+      } else if (error.code === 'auth/popup-blocked') {
+        alert(lang === 'ar' ? "تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة للموقع." : "Popup blocked. Please allow popups for this site.");
       } else {
         alert(lang === 'ar' ? "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى." : "Login failed. Please try again.");
       }
@@ -135,8 +145,16 @@ export function LandingPage() {
                   <span className="hidden xs:inline">{currentLang.name}</span>
                 </button>
                 {isLangOpen && (
-                  <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200 z-50" style={isRtl ? { left: 0 } : { right: 0 }}>
-                    <div className="max-h-[50vh] overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                  <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200 z-50 flex flex-col" style={isRtl ? { left: 0 } : { right: 0 }}>
+                    <button 
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); document.getElementById('lang-scroll')?.scrollBy({ top: -100, behavior: 'smooth' }); }}
+                      className="w-full flex justify-center py-1 bg-slate-50 hover:bg-slate-100 text-slate-400 border-b border-slate-100"
+                    >
+                      <ChevronUp size={18} />
+                    </button>
+                    
+                    <div id="lang-scroll" className="max-h-[40vh] overflow-y-auto py-2 force-scrollbar scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
                       {languages.map((l) => (
                         <button
                           key={l.code}
@@ -152,6 +170,14 @@ export function LandingPage() {
                         </button>
                       ))}
                     </div>
+
+                    <button 
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); document.getElementById('lang-scroll')?.scrollBy({ top: 100, behavior: 'smooth' }); }}
+                      className="w-full flex justify-center py-1 bg-slate-50 hover:bg-slate-100 text-slate-400 border-t border-slate-100"
+                    >
+                      <ChevronDown size={18} />
+                    </button>
                   </div>
                 )}
               </div>

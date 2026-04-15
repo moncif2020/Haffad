@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Option {
   value: string | number;
@@ -16,6 +16,7 @@ interface CustomSelectProps {
 export function CustomSelect({ value, onChange, options, className = '' }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const optionsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
   const selectedOption = options.find(opt => opt.value === value) || options[0];
@@ -36,6 +37,16 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
       behavior: 'smooth',
       block: 'nearest'
     });
+  };
+
+  const scroll = (direction: 'up' | 'down') => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = 100;
+      scrollContainerRef.current.scrollBy({
+        top: direction === 'up' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
   };
 
   return (
@@ -61,21 +72,44 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
       </div>
       
       {isOpen && (
-        <div className="absolute z-[1001] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-[40vh] overflow-y-auto animate-in fade-in zoom-in duration-200 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
-          {options.map((option, idx) => (
-            <button
-              key={option.value}
-              ref={el => optionsRef.current[idx] = el}
-              onFocus={() => handleFocus(idx)}
-              className={`w-full text-start p-4 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none transition-colors ${value === option.value ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-700'}`}
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="absolute z-[1001] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
+          {/* Top Scroll Indicator */}
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); scroll('up'); }}
+            className="w-full flex justify-center py-1 bg-slate-50 hover:bg-slate-100 text-slate-400 border-b border-slate-100"
+          >
+            <ChevronUp size={20} />
+          </button>
+
+          <div 
+            ref={scrollContainerRef}
+            className="max-h-[35vh] overflow-y-auto force-scrollbar scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
+          >
+            {options.map((option, idx) => (
+              <button
+                key={option.value}
+                ref={el => optionsRef.current[idx] = el}
+                onFocus={() => handleFocus(idx)}
+                className={`w-full text-start p-4 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none transition-colors ${value === option.value ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-700'}`}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Bottom Scroll Indicator */}
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); scroll('down'); }}
+            className="w-full flex justify-center py-1 bg-slate-50 hover:bg-slate-100 text-slate-400 border-t border-slate-100"
+          >
+            <ChevronDown size={20} />
+          </button>
         </div>
       )}
     </div>
