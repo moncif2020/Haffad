@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, Sparkles, Mic, TreePine, Users, 
   ArrowLeft, ArrowRight, CheckCircle2, Play, ShieldCheck,
-  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon
+  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon, LogIn
 } from 'lucide-react';
 import { landingTranslations, languages } from './landing-translations';
+import { auth, googleProvider } from './firebase';
+import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 
 export function LandingPage() {
   const [lang, setLang] = useState('ar');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
   
   // Merge selected language with English as fallback for missing keys
   const t = {
@@ -25,7 +29,27 @@ export function LandingPage() {
     document.title = `${t.app_name} - ${t.hero_title1} ${t.hero_title2}`;
     document.documentElement.dir = currentLang.dir;
     document.documentElement.lang = lang;
-  }, [lang, t, currentLang]);
+
+    // If already logged in, redirect to app
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        navigate('/app');
+      }
+    });
+    return () => unsubscribe();
+  }, [lang, t, currentLang, navigate]);
+
+  const handleStart = async () => {
+    setIsLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      navigate('/app');
+    } catch (error) {
+      console.error("Login Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans" dir={currentLang.dir}>
@@ -46,7 +70,7 @@ export function LandingPage() {
                   <span className="hidden xs:inline">{currentLang.name}</span>
                 </button>
                 <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50" style={isRtl ? { left: 0 } : { right: 0 }}>
-                  <div className="max-h-64 overflow-y-auto py-2">
+                  <div className="max-h-[60vh] overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                     {languages.map((l) => (
                       <button
                         key={l.code}
@@ -61,20 +85,21 @@ export function LandingPage() {
                 </div>
               </div>
 
-              <Link 
-                to="/app" 
+              <button 
+                onClick={handleStart}
                 className="text-slate-600 hover:text-emerald-600 font-medium transition-colors hidden md:block"
               >
                 {t.nav_login}
-              </Link>
+              </button>
               
-              <Link 
-                to="/app" 
-                className="bg-emerald-600 text-white px-4 sm:px-5 py-2 rounded-full font-medium hover:bg-emerald-700 transition-colors shadow-sm hover:shadow-md flex items-center gap-2 text-sm sm:text-base"
+              <button 
+                onClick={handleStart}
+                disabled={isLoading}
+                className="bg-emerald-600 text-white px-4 sm:px-5 py-2 rounded-full font-medium hover:bg-emerald-700 transition-colors shadow-sm hover:shadow-md flex items-center gap-2 text-sm sm:text-base disabled:opacity-50"
               >
                 <span>{t.nav_start}</span>
                 {isRtl ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -103,13 +128,14 @@ export function LandingPage() {
               {t.hero_desc}
             </p>
             <div className={`flex flex-col sm:flex-row gap-4 justify-center ${isRtl ? 'lg:justify-start' : 'lg:justify-start'}`}>
-              <Link 
-                to="/app" 
-                className="bg-emerald-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 flex items-center justify-center gap-2"
+              <button 
+                onClick={handleStart}
+                disabled={isLoading}
+                className="bg-emerald-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Play size={20} fill="currentColor" />
                 <span>{t.hero_btn_web}</span>
-              </Link>
+              </button>
               <button className="bg-white text-slate-700 border-2 border-slate-200 px-8 py-4 rounded-full font-bold text-lg hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2 opacity-80 cursor-not-allowed" title={t.hero_btn_app}>
                 <span>{t.hero_btn_app}</span>
               </button>
@@ -265,13 +291,14 @@ export function LandingPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           <h2 className="text-3xl sm:text-5xl font-bold text-white mb-6">{t.cta_title}</h2>
           <p className="text-xl text-emerald-100 mb-10">{t.cta_desc}</p>
-          <Link 
-            to="/app" 
-            className={`inline-flex items-center gap-2 bg-white text-emerald-700 px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-50 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}
+          <button 
+            onClick={handleStart}
+            disabled={isLoading}
+            className={`inline-flex items-center gap-2 bg-white text-emerald-700 px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-50 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 disabled:opacity-50 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}
           >
             <span>{t.cta_btn}</span>
             {isRtl ? <ArrowLeft size={20} /> : <ArrowRight size={20} />}
-          </Link>
+          </button>
         </div>
       </section>
 

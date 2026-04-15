@@ -40,18 +40,18 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
       </div>
       
       {isOpen && (
-        <div className="absolute z-[1001] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-60 overflow-y-auto animate-in fade-in zoom-in duration-200">
+        <div className="absolute z-[1001] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-[60vh] overflow-y-auto animate-in fade-in zoom-in duration-200 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
           {options.map((option) => (
-            <div
+            <button
               key={option.value}
-              className={`p-4 cursor-pointer hover:bg-emerald-50 transition-colors ${value === option.value ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-700'}`}
+              className={`w-full text-start p-4 cursor-pointer hover:bg-emerald-50 transition-colors ${value === option.value ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-700'}`}
               onClick={() => {
                 onChange(option.value);
                 setIsOpen(false);
               }}
             >
               {option.label}
-            </div>
+            </button>
           ))}
         </div>
       )}

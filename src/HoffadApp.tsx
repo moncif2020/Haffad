@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera } from 'lucide-react';
 import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl } from './lib/quran';
 import { MushafViewer } from './components/MushafViewer';
 import { CustomSelect } from './components/CustomSelect';
@@ -10,13 +11,14 @@ import { diff_match_patch } from 'diff-match-patch';
 import { useAudio } from './AudioContext';
 
 import { QRCodeSVG } from 'qrcode.react';
-import { db, auth, storage } from './firebase';
+import { db, auth, storage, googleProvider } from './firebase';
 import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, getBlob } from 'firebase/storage';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 // --- Types ---
 type View = 'garden' | 'study' | 'parent' | 'game' | 'listen' | 'mushaf' | 'about' | 'upgrade';
-type Lesson = { id: string; title: string; text: string; type?: 'quran' | 'custom' };
+type Lesson = { id: string; title: string; text: string; type?: 'quran' | 'custom'; audioUrl?: string; lang?: string };
 type Language = string;
 
 const APP_LANGUAGES = [
@@ -99,6 +101,193 @@ const normalizeArabic = (text: string) => {
     .trim();
 };
 
+// --- Reusable Custom Text Input Component ---
+function CustomTextInput({ 
+  text, 
+  setText, 
+  customLang, 
+  setCustomLang, 
+  onAction, 
+  actionLabel, 
+  actionIcon,
+  lang,
+  isParentMode = false
+}: { 
+  text: string, 
+  setText: React.Dispatch<React.SetStateAction<string>>,
+  customLang: string,
+  setCustomLang: React.Dispatch<React.SetStateAction<string>>,
+  onAction: () => void,
+  actionLabel: string,
+  actionIcon: React.ReactNode,
+  lang: Language,
+  isParentMode?: boolean
+}) {
+  const [extractingType, setExtractingType] = useState<'image' | 'audio' | 'video' | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExtraction = async (file: File, type: 'image' | 'audio' | 'video') => {
+    if (!file) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert(lang.startsWith('ar') ? "حجم الملف كبير جداً. يرجى رفع ملف أقل من 25 ميجابايت." : "File size is too large. Please upload a file smaller than 25MB.");
+      return;
+    }
+
+    const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+                   process.env.GEMINI_API_KEY || 
+                   process.env.VITE_GEMINI_API_KEY ||
+                   (window as any).GEMINI_API_KEY;
+    
+    if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey === "null") {
+      console.error("Gemini API Key missing or invalid:", { 
+        hasKey: !!apiKey, 
+        value: apiKey ? "SET" : "EMPTY" 
+      });
+      alert(lang.startsWith('ar') ? "خطأ: لم يتم العثور على مفتاح API. يرجى التأكد من إعداد المفتاح في الإعدادات." : "Error: API key not found. Please ensure the key is set in settings.");
+      return;
+    }
+    
+    console.log("Using API Key starting with:", apiKey.substring(0, 5));
+
+    setExtractingType(type);
+    setStatus(lang.startsWith('ar') ? "جاري معالجة الملف واستخراج النص..." : "Processing file and extracting text...");
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      await new Promise<void>((resolve, reject) => {
+        reader.onload = () => resolve();
+        reader.onerror = error => reject(error);
+      });
+
+      const base64Data = (reader.result as string).split(',')[1];
+      let mimeType = file.type;
+      
+      if (type === 'image' && !mimeType) mimeType = 'image/jpeg';
+      if (type === 'audio' && !mimeType) {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        mimeType = ext === 'wav' ? 'audio/wav' : ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg';
+      } else if (type === 'audio' && mimeType === 'audio/mp3') {
+        mimeType = 'audio/mpeg';
+      }
+      if (type === 'video' && !mimeType) mimeType = 'video/mp4';
+
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = type === 'image' 
+        ? "استخرج النص من هذه الصورة بدقة. أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد."
+        : "استخرج النص من هذا المقطع بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات.";
+
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts: [{ inlineData: { data: base64Data, mimeType } }, { text: prompt }] },
+      });
+
+      if (result.text) {
+        setText(prev => prev ? prev + '\n\n' + result.text.trim() : result.text.trim());
+        setStatus(lang.startsWith('ar') ? "تم استخراج النص بنجاح!" : "Text extracted successfully!");
+      } else {
+        throw new Error("لم يتم العثور على نص.");
+      }
+    } catch (error: any) {
+      console.error("Extraction Error:", error);
+      setStatus(lang.startsWith('ar') ? "فشل استخراج النص." : "Failed to extract text.");
+      alert(lang.startsWith('ar') ? `حدث خطأ أثناء استخراج النص: ${error?.message || error}` : `Error during extraction: ${error?.message || error}`);
+    } finally {
+      setExtractingType(null);
+      setTimeout(() => setStatus(null), 3000);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (audioInputRef.current) audioInputRef.current.value = '';
+      if (videoInputRef.current) videoInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex flex-col items-center mb-4">
+          <div className="flex gap-2 mb-2">
+            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={e => e.target.files?.[0] && handleExtraction(e.target.files[0], 'image')} />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={extractingType !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {extractingType === 'image' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+              {lang.startsWith('ar') ? 'صورة' : 'Image'}
+            </button>
+
+            <input type="file" accept="audio/*" className="hidden" ref={audioInputRef} onChange={e => e.target.files?.[0] && handleExtraction(e.target.files[0], 'audio')} />
+            <button 
+              onClick={() => audioInputRef.current?.click()}
+              disabled={extractingType !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {extractingType === 'audio' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
+              {lang.startsWith('ar') ? 'صوت' : 'Audio'}
+            </button>
+
+            <input type="file" accept="video/*" className="hidden" ref={videoInputRef} onChange={e => e.target.files?.[0] && handleExtraction(e.target.files[0], 'video')} />
+            <button 
+              onClick={() => videoInputRef.current?.click()}
+              disabled={extractingType !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {extractingType === 'video' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
+              {lang.startsWith('ar') ? 'فيديو' : 'Video'}
+            </button>
+          </div>
+          {status && (
+            <motion.p 
+              initial={{ opacity: 0, y: -5 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              className={`text-xs font-bold ${status.includes('فشل') || status.includes('Failed') ? 'text-red-500' : 'text-emerald-600'}`}
+            >
+              {status}
+            </motion.p>
+          )}
+        </div>
+        <textarea 
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder={translations[lang]?.textPlaceholder || translations['en']?.textPlaceholder}
+          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium min-h-[150px] resize-none"
+          dir="auto"
+        />
+        <p className="text-xs text-slate-400 mt-2">{translations[lang]?.textTip || translations['en']?.textTip}</p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold text-slate-700 mb-2">{translations[lang]?.textLanguage || translations['en']?.textLanguage}</label>
+        <div className="relative">
+          <Languages className="absolute right-4 top-4 text-slate-400" size={20} />
+          <select 
+            value={customLang} 
+            onChange={e => setCustomLang(e.target.value)}
+            className="w-full p-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium"
+          >
+            <option value="ar-SA">{translations[lang]?.arabic || translations['en']?.arabic}</option>
+            <option value="en-US">{translations[lang]?.english || translations['en']?.english}</option>
+            <option value="fr-FR">{translations[lang]?.french || translations['en']?.french}</option>
+            <option value="es-ES">{translations[lang]?.spanish || translations['en']?.spanish}</option>
+          </select>
+        </div>
+      </div>
+
+      <button 
+        onClick={onAction}
+        disabled={text.trim().length === 0}
+        className="w-full bg-emerald-500 text-white font-bold text-lg py-4 rounded-2xl shadow-md shadow-emerald-200 flex items-center justify-center gap-2 mt-4 hover:bg-emerald-600 transition-colors disabled:opacity-70"
+      >
+        {actionIcon}
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
 // --- Listen & Memorize Screen ---
 function ListenScreen({ lang }: { lang: Language }) {
   const [listenMode, setListenMode] = useState<'quran' | 'custom'>('quran');
@@ -126,10 +315,6 @@ function ListenScreen({ lang }: { lang: Language }) {
   const [customRangeReps, setCustomRangeReps] = useState<number>(1);
   const [customPlaylist, setCustomPlaylist] = useState<string[]>([]);
   const [customCurrentIndex, setCustomCurrentIndex] = useState<number>(-1);
-  const [extractingType, setExtractingType] = useState<'image' | 'audio' | 'video' | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -305,175 +490,6 @@ function ListenScreen({ lang }: { lang: Language }) {
       stopListening();
     }
   }, [customCurrentIndex, customPlaylist, customLang, listenMode]);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 15 * 1024 * 1024) {
-      alert(lang.startsWith('ar') ? "حجم الصورة كبير جداً. يرجى رفع صورة أقل من 15 ميجابايت." : "Image size is too large. Please upload an image smaller than 15MB.");
-      return;
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "") {
-      alert(lang.startsWith('ar') ? "خطأ: لم يتم العثور على مفتاح API. يرجى التأكد من إضافة GEMINI_API_KEY في قسم Secrets ثم قم بتحديث الصفحة (Refresh)." : "Error: API key not found. Please ensure GEMINI_API_KEY is added to Secrets and refresh the page.");
-      return;
-    }
-
-    setExtractingType('image');
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      await new Promise<void>((resolve, reject) => {
-        reader.onload = () => resolve();
-        reader.onerror = error => reject(error);
-      });
-
-      const base64Data = (reader.result as string).split(',')[1];
-      let mimeType = file.type || 'image/jpeg';
-
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              { inlineData: { data: base64Data, mimeType } },
-              { text: "استخرج النص من هذه الصورة بدقة. أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد." }
-            ]
-          }
-        ],
-      });
-
-      if (response.text) {
-        setCustomText(prev => prev ? prev + '\n\n' + response.text.trim() : response.text.trim());
-      } else {
-        throw new Error("لم يتم العثور على نص في الصورة.");
-      }
-    } catch (error: any) {
-      console.error("Extraction Error:", error);
-      const msg = error?.message || String(error);
-      alert(lang.startsWith('ar') ? `حدث خطأ: ${msg}` : `Error: ${msg}`);
-    } finally {
-      setExtractingType(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 15 * 1024 * 1024) {
-      alert(lang.startsWith('ar') ? "حجم الملف الصوتي كبير جداً. يرجى رفع ملف أقل من 15 ميجابايت." : "Audio file size is too large. Please upload a file smaller than 15MB.");
-      return;
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "") {
-      alert(lang.startsWith('ar') ? "خطأ: مفتاح API غير صالح أو غير مضبوط." : "Error: Invalid or missing API key.");
-      return;
-    }
-
-    setExtractingType('audio');
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      await new Promise<void>((resolve, reject) => {
-        reader.onload = () => resolve();
-        reader.onerror = error => reject(error);
-      });
-
-      const base64Data = (reader.result as string).split(',')[1];
-      let mimeType = file.type;
-      if (!mimeType) {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        mimeType = ext === 'wav' ? 'audio/wav' : ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg';
-      } else if (mimeType === 'audio/mp3') {
-        mimeType = 'audio/mpeg';
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              { inlineData: { data: base64Data, mimeType } },
-              { text: "استخرج النص من هذا المقطع الصوتي بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات." }
-            ]
-          }
-        ],
-      });
-
-      if (response.text) {
-        setCustomText(prev => prev ? prev + '\n\n' + response.text.trim() : response.text.trim());
-      } else {
-        throw new Error("لم يتم استخراج أي نص من الصوت.");
-      }
-    } catch (error: any) {
-      console.error("Audio Extraction Error:", error);
-      alert(lang.startsWith('ar') ? `خطأ في الصوت: ${error?.message || error}` : `Audio Error: ${error?.message || error}`);
-    } finally {
-      setExtractingType(null);
-      if (audioInputRef.current) audioInputRef.current.value = '';
-    }
-  };
-
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 15 * 1024 * 1024) {
-      alert(lang.startsWith('ar') ? "حجم الفيديو كبير جداً. يرجى رفع ملف أقل من 15 ميجابايت." : "Video file size is too large. Please upload a file smaller than 15MB.");
-      return;
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "") {
-      alert(lang.startsWith('ar') ? "خطأ: مفتاح API غير صالح أو غير مضبوط." : "Error: Invalid or missing API key.");
-      return;
-    }
-
-    setExtractingType('video');
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      await new Promise<void>((resolve, reject) => {
-        reader.onload = () => resolve();
-        reader.onerror = error => reject(error);
-      });
-
-      const base64Data = (reader.result as string).split(',')[1];
-      let mimeType = file.type || 'video/mp4';
-
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              { inlineData: { data: base64Data, mimeType } },
-              { text: "استخرج النص من هذا الفيديو بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات." }
-            ]
-          }
-        ],
-      });
-
-      if (response.text) {
-        setCustomText(prev => prev ? prev + '\n\n' + response.text.trim() : response.text.trim());
-      } else {
-        throw new Error("لم يتم استخراج أي نص من الفيديو.");
-      }
-    } catch (error: any) {
-      console.error("Video Extraction Error:", error);
-      alert(lang.startsWith('ar') ? `خطأ في الفيديو: ${error?.message || error}` : `Video Error: ${error?.message || error}`);
-    } finally {
-      setExtractingType(null);
-      if (videoInputRef.current) videoInputRef.current.value = '';
-    }
-  };
 
   const startCustomListening = () => {
     window.speechSynthesis.cancel();
@@ -699,96 +715,18 @@ function ListenScreen({ lang }: { lang: Language }) {
           </motion.div>
         ) : (
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-5">
-            <div>
-              <div className="flex items-center justify-center mb-4">
-                <div className="flex gap-2">
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    className="hidden" 
-                    ref={fileInputRef}
-                    onChange={handleImageUpload}
-                  />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={extractingType !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
-                  >
-                    {extractingType === 'image' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <ImageIcon className="w-4 h-4" />
-                    )}
-                    {lang.startsWith('ar') ? 'صورة' : lang.startsWith('fr') ? 'Image' : 'Image'}
-                  </button>
-                  <input 
-                    type="file" 
-                    accept="audio/*" 
-                    className="hidden" 
-                    ref={audioInputRef}
-                    onChange={handleAudioUpload}
-                  />
-                  <button 
-                    onClick={() => audioInputRef.current?.click()}
-                    disabled={extractingType !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
-                  >
-                    {extractingType === 'audio' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Mic className="w-4 h-4" />
-                    )}
-                    {lang.startsWith('ar') ? 'صوت' : lang.startsWith('fr') ? 'Audio' : 'Audio'}
-                  </button>
-                  <input 
-                    type="file" 
-                    accept="video/*" 
-                    className="hidden" 
-                    ref={videoInputRef}
-                    onChange={handleVideoUpload}
-                  />
-                  <button 
-                    onClick={() => videoInputRef.current?.click()}
-                    disabled={extractingType !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
-                  >
-                    {extractingType === 'video' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Video className="w-4 h-4" />
-                    )}
-                    {lang.startsWith('ar') ? 'فيديو' : lang.startsWith('fr') ? 'Vidéo' : 'Video'}
-                  </button>
-                </div>
-              </div>
-              <textarea 
-                value={customText}
-                onChange={e => setCustomText(e.target.value)}
-                placeholder={t[lang].textPlaceholder}
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium min-h-[150px] resize-none"
-                dir="auto"
-              />
-              <p className="text-xs text-slate-400 mt-2">{t[lang].textTip}</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].textLanguage}</label>
-              <div className="relative">
-                <Languages className="absolute right-4 top-4 text-slate-400" size={20} />
-                <select 
-                  value={customLang} 
-                  onChange={e => setCustomLang(e.target.value)}
-                  className="w-full p-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium"
-                >
-                  <option value="ar-SA">{t[lang].arabic}</option>
-                  <option value="en-US">{t[lang].english}</option>
-                  <option value="fr-FR">{t[lang].french}</option>
-                  <option value="es-ES">{t[lang].spanish}</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
+            <CustomTextInput 
+              text={customText}
+              setText={setCustomText}
+              customLang={customLang}
+              setCustomLang={setCustomLang}
+              onAction={startCustomListening}
+              actionLabel={t[lang].startDictation}
+              actionIcon={<Play fill="currentColor" />}
+              lang={lang}
+            />
+            
+            <div className="pt-4 border-t border-slate-100">
               <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].repetitionsPerLine}</label>
               <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-200">
                 <input 
@@ -811,15 +749,6 @@ function ListenScreen({ lang }: { lang: Language }) {
                 <span className="w-10 text-center font-bold text-emerald-600 text-lg">{customRangeReps}</span>
               </div>
             </div>
-
-            <button 
-              onClick={startCustomListening}
-              disabled={customText.trim().length === 0}
-              className="w-full bg-emerald-500 text-white font-bold text-lg py-4 rounded-2xl shadow-md shadow-emerald-200 flex items-center justify-center gap-2 mt-4 hover:bg-emerald-600 transition-colors disabled:opacity-70"
-            >
-              <Play fill="currentColor" />
-              {t[lang].startDictation}
-            </button>
           </div>
         )
       )}
@@ -855,29 +784,111 @@ export default function App() {
     return newId;
   });
 
-  // Listen for remote uploads
+  const [uploadNotification, setUploadNotification] = useState<string | null>(null);
+  
+  // Parent Dashboard Lifted State
+  const [parentNewTitle, setParentNewTitle] = useState('');
+  const [parentNewText, setParentNewText] = useState('');
+  const [parentCustomLang, setParentCustomLang] = useState<string>('ar-SA');
+  const [isExtractingRemote, setIsExtractingRemote] = useState(false);
+
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const navigate = useNavigate();
+
+  // Auth Listener
   useEffect(() => {
-    const q = query(collection(db, 'uploads'), where('deviceId', '==', deviceId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          // Handle new upload (e.g., add to lessons)
-          if (data.type === 'image') {
-            setLessons(prev => [...prev, { 
-              id: change.doc.id, 
-              title: data.name || `Remote Image ${new Date().toLocaleTimeString()}`, 
-              text: data.url, 
-              type: 'custom' 
-            }]);
-          }
-          // Delete from firestore after processing
-          deleteDoc(doc(db, 'uploads', change.doc.id));
-        }
-      });
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthChecking(false);
+      if (!u) {
+        navigate('/');
+      }
     });
     return () => unsubscribe();
-  }, [deviceId]);
+  }, [navigate]);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login Error:", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
+
+  // Listen for remote uploads
+  useEffect(() => {
+    if (!deviceId) return;
+    
+    let q = query(collection(db, 'uploads'), where('deviceId', '==', deviceId));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach(async (change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          const fileUrl = data.url;
+          const fileType = data.type; // 'image', 'audio', 'video'
+          const fileName = data.name || '';
+
+          setUploadNotification(lang.startsWith('ar') ? `تم استلام ${fileType === 'image' ? 'صورة' : fileType === 'audio' ? 'ملف صوتي' : 'فيديو'}... جاري استخراج النص...` : `Received ${fileType}... Extracting text...`);
+          setIsExtractingRemote(true);
+          setView('parent'); // Switch to parent dashboard to show the result
+
+          try {
+            // 1. Fetch the file using our server-side proxy (bypasses CORS and client-side storage issues)
+            const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(fileUrl)}`;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error('Proxy fetch failed');
+            
+            const { base64: base64Data, contentType } = await response.json();
+
+            // 2. Call Gemini for extraction
+            const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+                           process.env.GEMINI_API_KEY || 
+                           process.env.VITE_GEMINI_API_KEY ||
+                           (window as any).GEMINI_API_KEY;
+            
+            if (apiKey && apiKey !== "undefined" && apiKey !== "" && apiKey !== "null") {
+              const ai = new GoogleGenAI({ apiKey });
+              const prompt = fileType === 'image' 
+                ? "استخرج النص من هذه الصورة بدقة. أعد النص فقط بدون أي إضافات أو تعليقات. إذا كان هناك نص عربي، حافظ على التشكيل إن وجد."
+                : "استخرج النص من هذا المقطع بدقة (تفريغ صوتي). أعد النص فقط بدون أي إضافات أو تعليقات.";
+
+              const result = await ai.models.generateContent({
+                model: "gemini-3-flash-preview",
+                contents: { parts: [{ inlineData: { data: base64Data, mimeType: contentType || (fileType === 'image' ? 'image/jpeg' : 'audio/mpeg') } }, { text: prompt }] },
+              });
+
+              if (result.text) {
+                setParentNewText(prev => prev ? prev + '\n\n' + result.text.trim() : result.text.trim());
+                setParentNewTitle(fileName || (lang.startsWith('ar') ? `نص مستخرج من ${fileType}` : `Extracted from ${fileType}`));
+                setUploadNotification(lang.startsWith('ar') ? "تم استخراج النص بنجاح!" : "Text extracted successfully!");
+              }
+            }
+          } catch (error) {
+            console.error("Remote Extraction Error:", error);
+            setUploadNotification(lang.startsWith('ar') ? "فشل استخراج النص تلقائياً." : "Failed to extract text automatically.");
+          } finally {
+            setIsExtractingRemote(false);
+            setTimeout(() => setUploadNotification(null), 5000);
+            // Delete from firestore after processing
+            deleteDoc(doc(db, 'uploads', change.doc.id)).catch(e => console.warn(e));
+          }
+        }
+      });
+    }, (error) => {
+      console.error("Firestore Listener Error:", error);
+    });
+    return () => unsubscribe();
+  }, [deviceId, lang]);
 
   useEffect(() => {
     const handleAppKeys = (e: KeyboardEvent) => {
@@ -907,6 +918,14 @@ export default function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
+      </div>
+    );
+  }
 
   // --- Handlers ---
   const handleDonate = (amount: number) => {
@@ -954,24 +973,69 @@ export default function App() {
                 <h2 className="text-2xl font-black text-slate-800 mb-2">{currentT.remoteUploadTitle}</h2>
                 <p className="text-slate-500 mb-8">{currentT.scanToUpload}</p>
 
-                <div className="bg-white p-6 rounded-3xl border-4 border-slate-50 shadow-inner inline-block mb-8">
-                  <QRCodeSVG 
-                    value={`${window.location.origin}/upload?dev=${deviceId}`}
-                    size={200}
-                    level="H"
-                    includeMargin={false}
-                  />
+                <div className="grid gap-6">
+                  {/* QR Code Section - Primary for TV/Desktop */}
+                  <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 flex flex-col items-center">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm mb-4 border border-slate-100">
+                      <QRCodeSVG 
+                        value={`${window.location.origin}/upload?dev=${deviceId}`}
+                        size={160}
+                        level="H"
+                        includeMargin={false}
+                      />
+                    </div>
+                    <div className="bg-white px-4 py-2 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Device ID</p>
+                      <p className="text-xl font-mono font-black text-emerald-600 tracking-wider">{deviceId}</p>
+                    </div>
+                  </div>
+
+                  {/* Scan Button Section - Primary for Mobile */}
+                  <div className="md:hidden">
+                    <div className="relative py-2 mb-4">
+                      <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200"></span></div>
+                      <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400 font-bold">{lang === 'ar' ? 'أو' : 'OR'}</span></div>
+                    </div>
+                    
+                    <button 
+                      onClick={() => window.open(`${window.location.origin}/upload`, '_blank')}
+                      className="w-full bg-emerald-600 text-white p-5 rounded-[24px] font-bold flex items-center justify-center gap-3 shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all active:scale-95"
+                    >
+                      <Camera size={24} />
+                      <span>{lang === 'ar' ? 'فتح الكاميرا لمسح الكود' : 'Open Camera to Scan'}</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Device ID</p>
-                  <p className="text-2xl font-mono font-black text-emerald-600 tracking-wider">{deviceId}</p>
-                </div>
+                {!user && (
+                  <div className="mt-6 flex items-center gap-3 p-4 bg-amber-50 text-amber-700 rounded-2xl border border-amber-100 text-sm font-medium">
+                    <AlertCircle size={20} className="shrink-0" />
+                    <p className="text-left">
+                      {lang === 'ar' ? 'يرجى تسجيل الدخول أولاً لتفعيل الرفع الآمن.' : 'Please login first to enable secure upload.'}
+                    </p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Upload Notification */}
+      <AnimatePresence>
+        {uploadNotification && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 20 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-0 left-1/2 -translate-x-1/2 z-[2000] bg-emerald-600 text-white px-6 py-3 rounded-full shadow-2xl font-bold flex items-center gap-3"
+          >
+            <Check size={20} />
+            {uploadNotification}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="bg-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-[100] transition-colors duration-300 border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3">
@@ -1005,7 +1069,7 @@ export default function App() {
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute top-full mt-2 start-0 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[1000] overflow-hidden py-2 max-h-[70vh] overflow-y-auto"
+                  className="absolute top-full mt-2 start-0 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[1000] py-2 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent"
                 >
                   {APP_LANGUAGES.map((l) => (
                     <button
@@ -1023,6 +1087,37 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+
+          {/* User Auth Section */}
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none"
+              >
+                <div className="hidden md:flex flex-col items-end">
+                  <span className="text-xs font-bold text-slate-800 leading-tight">{user.displayName}</span>
+                  <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">
+                    {lang === 'ar' ? 'الملف الشخصي' : 'Profile'}
+                  </span>
+                </div>
+                <img 
+                  src={user.photoURL || ''} 
+                  alt={user.displayName || ''} 
+                  className="w-9 h-9 rounded-full border-2 border-emerald-500 shadow-sm"
+                  referrerPolicy="no-referrer"
+                />
+              </button>
+            ) : (
+              <button 
+                onClick={handleLogin}
+                className="flex items-center gap-2 bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-full hover:bg-emerald-700 transition-colors shadow-md focus:ring-4 focus:ring-emerald-200 outline-none"
+              >
+                <LogIn size={16} />
+                <span className="hidden sm:inline">{currentT.login || 'Login with Google'}</span>
+              </button>
+            )}
           </div>
           
           <button
@@ -1138,6 +1233,30 @@ export default function App() {
                   <AlertCircle size={22} className={view === 'about' ? 'text-emerald-600' : 'text-emerald-500'} />
                   <span>{t[lang].aboutUs}</span>
                 </button>
+
+                {user && (
+                  <div className="mt-auto pt-4 border-t border-slate-100">
+                    <div className="flex items-center gap-3 px-3 mb-4">
+                      <img 
+                        src={user.photoURL || ''} 
+                        alt="" 
+                        className="w-10 h-10 rounded-full border-2 border-emerald-500 shadow-sm"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{user.displayName}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleLogout}
+                      className="flex items-center gap-3 p-3 rounded-xl transition-all w-full text-red-500 hover:bg-red-50 focus:ring-2 focus:ring-red-500 outline-none"
+                    >
+                      <LogOut size={22} />
+                      <span className="font-bold">{currentT.logout || 'Logout'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </>
@@ -1169,7 +1288,22 @@ export default function App() {
           )}
           {view === 'parent' && (
             <motion.div key="parent" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ParentScreen lessons={lessons} setLessons={setLessons} lang={lang} setLang={setLang} isPremium={isPremium} onUpgrade={() => setView('upgrade')} setIsRemoteModalOpen={setIsRemoteModalOpen} />
+              <ParentScreen 
+                lessons={lessons} 
+                setLessons={setLessons} 
+                lang={lang} 
+                setLang={setLang} 
+                isPremium={isPremium} 
+                onUpgrade={() => setView('upgrade')} 
+                setIsRemoteModalOpen={setIsRemoteModalOpen}
+                newTitle={parentNewTitle}
+                setNewTitle={setParentNewTitle}
+                newText={parentNewText}
+                setNewText={setParentNewText}
+                customLang={parentCustomLang}
+                setCustomLang={setParentCustomLang}
+                isExtractingRemote={isExtractingRemote}
+              />
             </motion.div>
           )}
           {view === 'mushaf' && (
@@ -1431,17 +1565,35 @@ function StudyScreen({ lessons, onStartGame, lang }: { lessons: Lesson[], onStar
           </div>
         ) : (
           lessons.map(lesson => (
-            <div key={lesson.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-lg text-slate-800">{lesson.title}</h3>
+            <div key={lesson.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-lg text-slate-800 truncate">{lesson.title}</h3>
                 <p className="text-sm text-slate-400 mt-1 line-clamp-1">{lesson.text}</p>
               </div>
-              <button 
-                onClick={() => onStartGame(lesson)}
-                className="bg-emerald-100 text-emerald-600 p-3 rounded-xl hover:bg-emerald-200 transition-colors"
-              >
-                <ArrowRight size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {lesson.type === 'custom' && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.speechSynthesis.cancel();
+                      const utterance = new SpeechSynthesisUtterance(lesson.text);
+                      utterance.lang = lesson.lang || 'ar-SA';
+                      utterance.rate = 0.9;
+                      window.speechSynthesis.speak(utterance);
+                    }}
+                    className="bg-blue-50 text-blue-600 p-3 rounded-xl hover:bg-blue-100 transition-colors"
+                    title={t[lang].listen}
+                  >
+                    <Headphones size={20} />
+                  </button>
+                )}
+                <button 
+                  onClick={() => onStartGame(lesson)}
+                  className="bg-emerald-100 text-emerald-600 p-3 rounded-xl hover:bg-emerald-200 transition-colors"
+                >
+                  <ArrowRight size={20} />
+                </button>
+              </div>
             </div>
           ))
         )}
@@ -2079,21 +2231,27 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
 }
 
 // --- Parent Screen (Dashboard) ---
-function ParentScreen({ lessons, setLessons, lang, setLang, isPremium, onUpgrade, setIsRemoteModalOpen }: { 
+function ParentScreen({ 
+  lessons, setLessons, lang, setLang, isPremium, onUpgrade, setIsRemoteModalOpen,
+  newTitle, setNewTitle, newText, setNewText, customLang, setCustomLang, isExtractingRemote
+}: { 
   lessons: Lesson[], 
-  setLessons: React.Dispatch<React.SetStateAction<Lesson[]>>, 
+  setLessons: (l: Lesson[]) => void, 
   lang: Language, 
-  setLang: React.Dispatch<React.SetStateAction<Language>>,
-  isPremium: boolean,
+  setLang: (l: Language) => void, 
+  isPremium: boolean, 
   onUpgrade: () => void,
-  setIsRemoteModalOpen: React.Dispatch<React.SetStateAction<boolean>>
+  setIsRemoteModalOpen: (o: boolean) => void,
+  newTitle: string,
+  setNewTitle: (t: string) => void,
+  newText: string,
+  setNewText: (t: string) => void,
+  customLang: string,
+  setCustomLang: (l: string) => void,
+  isExtractingRemote: boolean
 }) {
   const [addMode, setAddMode] = useState<'custom' | 'quran'>('quran');
   
-  // Custom text state
-  const [newTitle, setNewTitle] = useState('');
-  const [newText, setNewText] = useState('');
-
   // Quran state
   const [surahs, setSurahs] = useState<any[]>(QURAN_SURAHS);
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
@@ -2107,7 +2265,13 @@ function ParentScreen({ lessons, setLessons, lang, setLang, isPremium, onUpgrade
       return;
     }
     if (newTitle.trim() && newText.trim()) {
-      setLessons([...lessons, { id: Date.now().toString(), title: newTitle, text: newText, type: 'custom' }]);
+      setLessons([...lessons, { 
+        id: Date.now().toString(), 
+        title: newTitle, 
+        text: newText, 
+        type: 'custom',
+        lang: customLang
+      }]);
       setNewTitle('');
       setNewText('');
     }
@@ -2221,30 +2385,33 @@ function ParentScreen({ lessons, setLessons, lang, setLang, isPremium, onUpgrade
         </div>
 
         {addMode === 'custom' ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative">
+            {isExtractingRemote && (
+              <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center rounded-2xl">
+                <Loader2 className="w-10 h-10 text-emerald-600 animate-spin mb-2" />
+                <p className="font-bold text-emerald-700">{lang === 'ar' ? 'جاري استخراج النص من الهاتف...' : 'Extracting text from phone...'}</p>
+              </div>
+            )}
             <h3 className="font-bold text-lg mb-4">{t[lang].addNewTask}</h3>
             <input 
               type="text" 
               placeholder={t[lang].taskTitle}
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-6 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold"
             />
-            <textarea 
-              placeholder={t[lang].taskText}
-              value={newText}
-              onChange={(e) => setNewText(e.target.value)}
-              rows={4}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+            
+            <CustomTextInput 
+              text={newText}
+              setText={setNewText}
+              customLang={customLang}
+              setCustomLang={setCustomLang}
+              onAction={handleAddCustom}
+              actionLabel={t[lang].add}
+              actionIcon={<Plus size={20} />}
+              lang={lang}
+              isParentMode={true}
             />
-            <button 
-              onClick={handleAddCustom}
-              disabled={!newTitle.trim() || !newText.trim()}
-              className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Plus size={20} />
-              {t[lang].add}
-            </button>
           </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

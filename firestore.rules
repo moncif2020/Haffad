@@ -38,6 +38,7 @@ service cloud.firestore {
 
     function isValidUpload(data) {
       return data.deviceId is string && data.deviceId.size() > 0 && data.deviceId.size() < 100 &&
+             data.userId == request.auth.uid &&
              data.type in ['image', 'audio', 'video'] &&
              isValidUrl(data.url) &&
              data.createdAt is timestamp;
@@ -53,21 +54,18 @@ service cloud.firestore {
     // ===============================================================
 
     match /uploads/{uploadId} {
-      // Allow anyone to create an upload (phone side)
-      // In a real app, we'd use anonymous auth or specific tokens
-      // For this prototype, we allow public creation but strict validation
-      allow create: if isValidUpload(request.resource.data);
+      // Only authenticated users can create uploads
+      allow create: if isAuthenticated() && isValidUpload(request.resource.data);
       
-      // Allow reading if the deviceId matches (TV side)
-      // This is a simplified pairing logic for the prototype
-      allow read: if true; 
+      // Allow reading if authenticated (simplified for prototype)
+      allow read: if isAuthenticated(); 
       
-      // Allow deletion by the device
-      allow delete: if true;
+      // Allow deletion by the authenticated user or device
+      allow delete: if isAuthenticated();
     }
 
     match /pairings/{deviceId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
   }
 }
