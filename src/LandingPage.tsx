@@ -4,16 +4,20 @@ import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, Sparkles, Mic, TreePine, Users, 
   ArrowLeft, ArrowRight, CheckCircle2, Play, ShieldCheck,
-  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon, LogIn
+  BrainCircuit, Sprout, HeartHandshake, ChevronRight, ChevronLeft, Globe, Menu, X as CloseIcon, LogIn, Monitor, X
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { landingTranslations, languages } from './landing-translations';
-import { auth, googleProvider } from './firebase';
+import { auth, googleProvider, db } from './firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 export function LandingPage() {
   const [lang, setLang] = useState('ar');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTVModalOpen, setIsTVModalOpen] = useState(false);
+  const [tvSessionId, setTvSessionId] = useState<string | null>(null);
   const navigate = useNavigate();
   
   // Merge selected language with English as fallback for missing keys
@@ -44,11 +48,57 @@ export function LandingPage() {
     try {
       await signInWithPopup(auth, googleProvider);
       navigate('/app');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login Error:", error);
+      if (error.code === 'auth/internal-error') {
+        // If it's a TV or blocked user agent, suggest TV login
+        setIsTVModalOpen(true);
+        handleTVLogin();
+      } else {
+        alert(lang === 'ar' ? "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى." : "Login failed. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleTVLogin = () => {
+    const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    setTvSessionId(sessionId);
+    setIsTVModalOpen(true);
+
+    // Listen for the session to be linked
+    const unsubscribe = onSnapshot(doc(db, 'tv_sessions', sessionId), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.status === 'linked') {
+          // Try to get a custom token from our backend for "real" authentication
+          fetch('/api/generate-custom-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: data.uid })
+          })
+          .then(res => res.json())
+          .then(tokenData => {
+            if (tokenData.customToken) {
+              localStorage.setItem('hoffad_custom_token', tokenData.customToken);
+            }
+          })
+          .catch(err => console.warn("Custom token not available, falling back to session simulation:", err))
+          .finally(() => {
+            // Store the session info in localStorage as fallback
+            localStorage.setItem('hoffad_session_uid', data.uid);
+            localStorage.setItem('hoffad_session_name', data.displayName || '');
+            localStorage.setItem('hoffad_session_photo', data.photoURL || '');
+            
+            unsubscribe();
+            navigate('/app');
+          });
+        }
+      }
+    });
+
+    return () => unsubscribe();
   };
 
   return (
@@ -84,6 +134,14 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
+
+              <button 
+                onClick={handleTVLogin}
+                className="text-slate-600 hover:text-emerald-600 font-medium transition-colors flex items-center gap-2"
+              >
+                <Monitor size={18} />
+                <span className="hidden sm:inline">{lang === 'ar' ? 'دخول عبر الهاتف' : 'TV Login'}</span>
+              </button>
 
               <button 
                 onClick={handleStart}
@@ -348,6 +406,59 @@ export function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* TV Login Modal */}
+      {isTVModalOpen && tvSessionId && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white rounded-[2.5rem] shadow-2xl max-w-lg w-full p-8 relative overflow-hidden"
+          >
+            <button 
+              onClick={() => setIsTVModalOpen(false)}
+              className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 mx-auto mb-6">
+                <Monitor size={32} />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">
+                {lang === 'ar' ? 'تسجيل الدخول عبر الهاتف' : 'Login via Phone'}
+              </h2>
+              <p className="text-slate-600 mb-8">
+                {lang === 'ar' 
+                  ? 'امسح الرمز أدناه بهاتفك لتسجيل الدخول مباشرة على التلفاز' 
+                  : 'Scan the code below with your phone to login directly on the TV'}
+              </p>
+
+              <div className="bg-slate-50 p-6 rounded-3xl inline-block border-4 border-emerald-50 mb-8">
+                <QRCodeSVG 
+                  value={`${window.location.origin}/tv-login?sessionId=${tvSessionId}`}
+                  size={200}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-center gap-3 text-emerald-600 font-bold">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
+                  <span>{lang === 'ar' ? 'في انتظار المسح...' : 'Waiting for scan...'}</span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  {lang === 'ar' 
+                    ? 'بمجرد تسجيل الدخول من هاتفك، ستفتح هذه الشاشة تلقائياً.' 
+                    : 'Once you login from your phone, this screen will open automatically.'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

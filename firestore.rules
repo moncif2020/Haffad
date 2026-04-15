@@ -57,15 +57,19 @@ service cloud.firestore {
       // Only authenticated users can create uploads
       allow create: if isAuthenticated() && isValidUpload(request.resource.data);
       
-      // Allow reading if authenticated (simplified for prototype)
-      allow read: if isAuthenticated(); 
+      // Allow reading for the device (even if not fully authenticated via Firebase Auth)
+      allow read: if true; 
       
       // Allow deletion by the authenticated user or device
-      allow delete: if isAuthenticated();
+      allow delete: if true;
     }
 
     match /pairings/{deviceId} {
       allow read, write: if isAuthenticated();
+    }
+
+    match /tv_sessions/{sessionId} {
+      allow read, write: if true; // Public for linking process
     }
   }
 }

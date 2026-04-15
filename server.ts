@@ -3,6 +3,23 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import admin from 'firebase-admin';
+
+// Initialize Firebase Admin if environment variables are present
+if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+    console.log('Firebase Admin initialized successfully');
+  } catch (error) {
+    console.error('Firebase Admin initialization error:', error);
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +27,26 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  app.use(express.json());
+
+  // API route to generate a custom token for TV login
+  app.post('/api/generate-custom-token', async (req, res) => {
+    const { uid } = req.body;
+    if (!uid) return res.status(400).send('Missing uid');
+
+    if (!admin.apps.length) {
+      return res.status(503).send('Firebase Admin not configured');
+    }
+
+    try {
+      const customToken = await admin.auth().createCustomToken(uid);
+      res.json({ customToken });
+    } catch (error) {
+      console.error('Error generating custom token:', error);
+      res.status(500).send('Failed to generate token');
+    }
+  });
 
   // Proxy route to fetch images/audio from Firebase Storage and return as base64
   // This bypasses CORS issues on the client

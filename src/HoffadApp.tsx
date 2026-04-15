@@ -14,7 +14,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { db, auth, storage, googleProvider } from './firebase';
 import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, getBlob } from 'firebase/storage';
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { signInWithPopup, signOut, onAuthStateChanged, User, signInWithCustomToken } from 'firebase/auth';
 
 // --- Types ---
 type View = 'garden' | 'study' | 'parent' | 'game' | 'listen' | 'mushaf' | 'about' | 'upgrade';
@@ -798,11 +798,43 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setIsAuthChecking(false);
-      if (!u) {
+    const checkSession = async () => {
+      const customToken = localStorage.getItem('hoffad_custom_token');
+      if (customToken) {
+        try {
+          await signInWithCustomToken(auth, customToken);
+          localStorage.removeItem('hoffad_custom_token'); // Use it once
+          return;
+        } catch (err) {
+          console.error("Custom token login failed:", err);
+          localStorage.removeItem('hoffad_custom_token');
+        }
+      }
+
+      const sessionUid = localStorage.getItem('hoffad_session_uid');
+      if (sessionUid) {
+        const sessionName = localStorage.getItem('hoffad_session_name') || 'User';
+        const sessionPhoto = localStorage.getItem('hoffad_session_photo') || '';
+        setUser({
+          uid: sessionUid,
+          displayName: sessionName,
+          photoURL: sessionPhoto,
+          email: '',
+        } as any);
+        setIsAuthChecking(false);
+      } else {
+        setUser(null);
+        setIsAuthChecking(false);
         navigate('/');
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        setUser(u);
+        setIsAuthChecking(false);
+      } else {
+        checkSession();
       }
     });
     return () => unsubscribe();
@@ -811,13 +843,21 @@ export default function App() {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login Error:", error);
+      if (error.code === 'auth/internal-error') {
+        alert(lang.startsWith('ar') ? "خطأ داخلي في تسجيل الدخول. يرجى التأكد من السماح بالنوافذ المنبثقة وإضافة النطاق إلى قائمة النطاقات المصرح بها في Firebase." : "Internal login error. Please ensure popups are allowed and the domain is added to the Authorized Domains in Firebase Console.");
+      } else {
+        alert(lang.startsWith('ar') ? "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى." : "Login failed. Please try again.");
+      }
     }
   };
 
   const handleLogout = async () => {
     try {
+      localStorage.removeItem('hoffad_session_uid');
+      localStorage.removeItem('hoffad_session_name');
+      localStorage.removeItem('hoffad_session_photo');
       await signOut(auth);
     } catch (error) {
       console.error("Logout Error:", error);
