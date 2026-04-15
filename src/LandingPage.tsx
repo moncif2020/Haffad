@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -18,8 +18,10 @@ export function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
   const [tvSessionId, setTvSessionId] = useState<string | null>(null);
+  const [isLangOpen, setIsLangOpen] = useState(false);
   const navigate = useNavigate();
-  
+  const langRef = useRef<HTMLDivElement>(null);
+
   // Merge selected language with English as fallback for missing keys
   const t = {
     ...landingTranslations['en'],
@@ -28,6 +30,16 @@ export function LandingPage() {
   
   const currentLang = languages.find(l => l.code === lang) || languages[0];
   const isRtl = currentLang.dir === 'rtl';
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (langRef.current && !langRef.current.contains(event.target as Node)) {
+        setIsLangOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     document.title = `${t.app_name} - ${t.hero_title1} ${t.hero_title2}`;
@@ -114,25 +126,34 @@ export function LandingPage() {
             
             <div className="flex items-center gap-2 sm:gap-4">
               {/* Language Selector - Visible on all screens */}
-              <div className="relative group">
-                <button className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 font-medium transition-all text-sm sm:text-base">
+              <div className="relative" ref={langRef}>
+                <button 
+                  onClick={() => setIsLangOpen(!isLangOpen)}
+                  className={`flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 font-medium transition-all text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isLangOpen ? 'ring-2 ring-emerald-500 border-transparent bg-emerald-50' : ''}`}
+                >
                   <Globe size={18} />
                   <span className="hidden xs:inline">{currentLang.name}</span>
                 </button>
-                <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50" style={isRtl ? { left: 0 } : { right: 0 }}>
-                  <div className="max-h-[60vh] overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-                    {languages.map((l) => (
-                      <button
-                        key={l.code}
-                        onClick={() => setLang(l.code)}
-                        className={`w-full text-left px-4 py-2 hover:bg-emerald-50 transition-colors ${lang === l.code ? 'text-emerald-600 font-bold bg-emerald-50/50' : 'text-slate-700'}`}
-                        style={{ textAlign: isRtl ? 'right' : 'left' }}
-                      >
-                        {l.name}
-                      </button>
-                    ))}
+                {isLangOpen && (
+                  <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200 z-50" style={isRtl ? { left: 0 } : { right: 0 }}>
+                    <div className="max-h-[50vh] overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                      {languages.map((l) => (
+                        <button
+                          key={l.code}
+                          onClick={() => {
+                            setLang(l.code);
+                            setIsLangOpen(false);
+                          }}
+                          onFocus={(e) => e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                          className={`w-full text-left px-4 py-2 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none transition-colors ${lang === l.code ? 'text-emerald-600 font-bold bg-emerald-50/50' : 'text-slate-700'}`}
+                          style={{ textAlign: isRtl ? 'right' : 'left' }}
+                        >
+                          {l.name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <button 
