@@ -12,7 +12,7 @@ import { useAudio } from './AudioContext';
 
 import { QRCodeSVG } from 'qrcode.react';
 import { db, auth, storage, googleProvider } from './firebase';
-import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, doc, setDoc, getDoc, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, getBlob } from 'firebase/storage';
 import { signInWithPopup, signOut, onAuthStateChanged, User, signInWithCustomToken } from 'firebase/auth';
 
@@ -758,16 +758,15 @@ function ListenScreen({ lang }: { lang: Language }) {
 
 // --- Main App Component ---
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [view, setView] = useState<View>('study');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [coins, setCoins] = useState(0);
   const [xp, setXp] = useState(0);
   const [donations, setDonations] = useState(0);
-  const [lessons, setLessons] = useState<Lesson[]>([
-    { id: '1', title: 'سورة الإخلاص', text: 'قل هو الله أحد الله الصمد لم يلد ولم يولد ولم يكن له كفوا أحد' },
-    { id: '2', title: 'أنشودة الصباح', text: 'طلع الصباح فغردت طيور الحديقة فرحة بيوم جديد مشرق وجميل' }
-  ]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [lang, setLang] = useState<Language>('ar');
@@ -784,6 +783,53 @@ export default function App() {
     return newId;
   });
 
+  // Real-time Data Listeners
+  useEffect(() => {
+    if (!user) {
+      setLessons([]);
+      setXp(0);
+      setCoins(0);
+      setDonations(0);
+      return;
+    }
+
+    // 1. Profile Listener
+    const profileUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.xp !== undefined) setXp(data.xp);
+        if (data.coins !== undefined) setCoins(data.coins);
+        if (data.donations !== undefined) setDonations(data.donations);
+      } else {
+        // Initialize profile if not exists
+        setDoc(doc(db, 'users', user.uid), {
+          xp: 0,
+          coins: 0,
+          donations: 0,
+          updatedAt: serverTimestamp()
+        });
+      }
+    });
+
+    // 2. Lessons Listener
+    const lessonsQuery = query(
+      collection(db, 'users', user.uid, 'lessons'),
+      orderBy('createdAt', 'desc')
+    );
+    const lessonsUnsubscribe = onSnapshot(lessonsQuery, (snapshot) => {
+      const fetchedLessons = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Lesson[];
+      setLessons(fetchedLessons);
+    });
+
+    return () => {
+      profileUnsubscribe();
+      lessonsUnsubscribe();
+    };
+  }, [user]);
+
   const [uploadNotification, setUploadNotification] = useState<string | null>(null);
   
   // Parent Dashboard Lifted State
@@ -792,8 +838,6 @@ export default function App() {
   const [parentCustomLang, setParentCustomLang] = useState<string>('ar-SA');
   const [isExtractingRemote, setIsExtractingRemote] = useState(false);
 
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const navigate = useNavigate();
 
   // Auth Listener
@@ -972,10 +1016,49 @@ export default function App() {
   }
 
   // --- Handlers ---
+  const handleAddLesson = async (newLesson: Omit<Lesson, 'id'>) => {
+    if (!user) return;
+    try {
+      const lessonsRef = collection(db, 'users', user.uid, 'lessons');
+      await addDoc(lessonsRef, {
+        ...newLesson,
+        userId: user.uid,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error("Error adding lesson:", err);
+    }
+  };
+
+  const handleDeleteLesson = async (lessonId: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'lessons', lessonId));
+    } catch (err) {
+      console.error("Error deleting lesson:", err);
+    }
+  };
+
+  const updateProfile = async (data: Partial<{ xp: number, coins: number, donations: number }>) => {
+    if (!user) return;
+    try {
+      const profileRef = doc(db, 'users', user.uid);
+      await setDoc(profileRef, {
+        ...data,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.error("Error updating profile:", err);
+    }
+  };
+
   const handleDonate = (amount: number) => {
     if (coins >= amount) {
-      setCoins(coins - amount);
-      setDonations(donations + 1);
+      const newCoins = coins - amount;
+      const newDonations = donations + 1;
+      setCoins(newCoins);
+      setDonations(newDonations);
+      updateProfile({ coins: newCoins, donations: newDonations });
     }
   };
 
@@ -985,8 +1068,11 @@ export default function App() {
   };
 
   const handleGameComplete = (earnedCoins: number) => {
-    setCoins(coins + earnedCoins);
-    setXp(xp + earnedCoins); // XP grows with effort
+    const newCoins = coins + earnedCoins;
+    const newXp = xp + earnedCoins;
+    setCoins(newCoins);
+    setXp(newXp); // XP grows with effort
+    updateProfile({ coins: newCoins, xp: newXp });
     setView('garden');
     setActiveLesson(null);
   };
@@ -1081,30 +1167,30 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="bg-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-[100] transition-colors duration-300 border-b border-slate-100 shadow-sm">
-        <div className="flex items-center gap-3">
+      <header className="bg-white px-2 sm:px-6 py-2 sm:py-4 flex justify-between items-center sticky top-0 z-[100] transition-colors duration-300 border-b border-slate-100 shadow-sm">
+        <div className="flex items-center gap-1 sm:gap-4 flex-1 min-w-0">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="bg-[#00c48c] text-white p-2.5 sm:p-3 rounded-[16px] shadow-sm hover:bg-[#00b07d] transition-colors focus:ring-4 focus:ring-emerald-300 outline-none"
+            className="bg-[#00c48c] text-white p-2 sm:p-3 rounded-[12px] sm:rounded-[16px] shadow-sm hover:bg-[#00b07d] transition-colors focus:ring-4 focus:ring-emerald-300 outline-none shrink-0"
           >
-            <Menu size={24} />
+            <Menu size={22} className="sm:size-6" />
           </button>
-          <div className="flex items-center gap-2 hidden sm:flex">
-            <img src="/logo.svg" alt="Hoffad Logo" className="w-8 h-8 object-contain" />
-            <h1 className="font-bold text-xl text-slate-800">{currentT.myApp}</h1>
+          
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <img src="/logo.svg" alt="Hoffad Logo" className="w-6 h-6 sm:w-8 sm:h-8 object-contain" />
+            <h1 className="font-bold text-sm sm:text-xl text-slate-800 whitespace-nowrap truncate max-w-[100px] sm:max-w-none">
+              {lang === 'ar' ? 'حُفّاظ' : 'Hoffad'}
+            </h1>
           </div>
-        </div>
 
-        <div className="flex items-center gap-4 sm:gap-5">
-          {/* Custom Language Selector for TV Compatibility */}
-          <div className="relative" ref={langMenuRef}>
+          <div className="relative shrink-0" ref={langMenuRef}>
             <button 
               onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
-              className="flex items-center gap-2 bg-slate-50 text-slate-700 text-sm font-bold py-2 px-4 rounded-full hover:bg-slate-100 transition-colors border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="flex items-center gap-1 sm:gap-1.5 bg-slate-50 text-slate-700 text-[10px] sm:text-sm font-bold py-1.5 px-2 sm:px-3 rounded-full hover:bg-slate-100 transition-colors border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
             >
-              <Languages size={18} className="text-emerald-600" />
-              <span className="uppercase">{lang}</span>
-              <ChevronDown size={14} className={`transition-transform ${isLangMenuOpen ? 'rotate-180' : ''}`} />
+              <Languages size={15} className="text-emerald-600 sm:size-5" />
+              <span className="uppercase sm:inline-block">{lang}</span>
+              <ChevronDown size={10} className={`transition-transform sm:size-4 ${isLangMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -1151,13 +1237,15 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+        </div>
 
+        <div className="flex items-center gap-1.5 sm:gap-4">
           {/* User Auth Section */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {user ? (
               <button 
                 onClick={() => setIsSidebarOpen(true)}
-                className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none"
+                className="flex items-center gap-1 sm:gap-3 hover:opacity-80 transition-opacity focus:outline-none"
               >
                 <div className="hidden md:flex flex-col items-end">
                   <span className="text-xs font-bold text-slate-800 leading-tight">{user.displayName}</span>
@@ -1168,17 +1256,17 @@ export default function App() {
                 <img 
                   src={user.photoURL || ''} 
                   alt={user.displayName || ''} 
-                  className="w-9 h-9 rounded-full border-2 border-emerald-500 shadow-sm"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-emerald-500 shadow-sm"
                   referrerPolicy="no-referrer"
                 />
               </button>
             ) : (
               <button 
                 onClick={handleLogin}
-                className="flex items-center gap-2 bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-full hover:bg-emerald-700 transition-colors shadow-md focus:ring-4 focus:ring-emerald-200 outline-none"
+                className="flex items-center gap-1 sm:gap-2 bg-emerald-600 text-white text-[10px] sm:text-xs font-bold py-1.5 px-2 sm:px-4 rounded-full hover:bg-emerald-700 transition-colors shadow-md focus:ring-4 focus:ring-emerald-200 outline-none"
               >
-                <LogIn size={16} />
-                <span className="hidden sm:inline">{currentT.login || 'Login with Google'}</span>
+                <LogIn size={18} />
+                <span className="hidden sm:inline">{currentT.login || 'Login'}</span>
               </button>
             )}
           </div>
@@ -1187,24 +1275,20 @@ export default function App() {
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="text-slate-400 hover:text-slate-600 transition-colors focus:ring-2 focus:ring-emerald-500 outline-none p-1 rounded-full"
           >
-            {isDarkMode ? <Sun size={24} className="text-amber-500" /> : <Moon size={24} />}
+            {isDarkMode ? <Sun size={22} className="text-amber-500 sm:size-6" /> : <Moon size={22} className="sm:size-6" />}
           </button>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {!isPremium && (
               <button 
                 onClick={() => setView('upgrade')}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 px-3 py-1.5 rounded-full font-black text-[10px] sm:text-xs shadow-md shadow-amber-200 hover:scale-105 transition-transform active:scale-95 focus:ring-4 focus:ring-amber-300 outline-none"
+                className="flex items-center gap-1 bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 px-2 py-1 sm:px-3 sm:py-1.5 rounded-full font-black text-[9px] sm:text-xs shadow-md shadow-amber-200 hover:scale-105 transition-transform active:scale-95 focus:ring-4 focus:ring-amber-300 outline-none"
               >
                 <Star size={14} fill="currentColor" />
-                <span className="uppercase tracking-wider">{t[lang].upgradeShort}</span>
+                <span className="uppercase tracking-wider hidden min-[450px]:inline">{t[lang].upgradeShort}</span>
               </button>
             )}
             
-            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-100/50 px-4 py-2.5 rounded-full font-bold text-sm">
-              <span className="text-base">{coins}</span>
-              <Coins size={20} className="text-emerald-600" />
-            </div>
           </div>
         </div>
       </header>
@@ -1231,7 +1315,7 @@ export default function App() {
               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50">
                 <div className="flex items-center gap-2">
                   <img src="/logo.svg" alt="Hoffad Logo" className="w-8 h-8 object-contain" />
-                  <span className="font-bold text-xl text-emerald-700">{t[lang].myApp}</span>
+                  <span className="font-bold text-xl text-emerald-700">{lang === 'ar' ? t['ar'].myApp : t['en'].myApp}</span>
                 </div>
                 <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-400 hover:bg-emerald-100 hover:text-emerald-600 rounded-full transition-colors">
                   <X size={20} />
@@ -1327,33 +1411,34 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-md w-full mx-auto p-4 flex flex-col pb-8">
+      <main className={`flex-1 ${view === 'mushaf' ? 'max-w-5xl' : 'max-w-md'} w-full mx-auto p-2 sm:p-4 flex flex-col pb-8`}>
         <AnimatePresence mode="wait">
           {view === 'garden' && (
-            <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <GardenScreen xp={xp} coins={coins} donations={donations} onDonate={handleDonate} onStudyClick={() => setView('study')} lang={lang} />
             </motion.div>
           )}
           {view === 'study' && (
-            <motion.div key="study" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="study" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <StudyScreen lessons={lessons} onStartGame={startGame} lang={lang} />
             </motion.div>
           )}
           {view === 'game' && activeLesson && (
-            <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <GameScreen lesson={activeLesson} onComplete={handleGameComplete} onCancel={() => setView('study')} lang={lang} />
             </motion.div>
           )}
           {view === 'listen' && (
-            <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <ListenScreen lang={lang} />
             </motion.div>
           )}
           {view === 'parent' && (
-            <motion.div key="parent" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="parent" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <ParentScreen 
                 lessons={lessons} 
-                setLessons={setLessons} 
+                onAddLesson={handleAddLesson}
+                onDeleteLesson={handleDeleteLesson}
                 lang={lang} 
                 setLang={setLang} 
                 isPremium={isPremium} 
@@ -1370,17 +1455,17 @@ export default function App() {
             </motion.div>
           )}
           {view === 'mushaf' && (
-            <motion.div key="mushaf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <MushafViewer />
+            <motion.div key="mushaf" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full flex flex-col">
+              <MushafViewer onClose={() => setView('garden')} lang={lang} />
             </motion.div>
           )}
           {view === 'about' && (
-            <motion.div key="about" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="about" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <AboutScreen lang={lang} />
             </motion.div>
           )}
           {view === 'upgrade' && (
-            <motion.div key="upgrade" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="upgrade" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
               <UpgradeScreen lang={lang} onUpgrade={() => { setIsPremium(true); setView('study'); }} />
             </motion.div>
           )}
@@ -1467,7 +1552,7 @@ function AboutScreen({ lang }: { lang: Language }) {
 
         <div className="space-y-8">
           <section>
-            <h3 className="text-lg font-bold text-emerald-600 mb-2">{t[lang].myApp}</h3>
+            <h3 className="text-lg font-bold text-emerald-600 mb-2">{lang === 'ar' ? t['ar'].myApp : t['en'].myApp}</h3>
             <p className="text-slate-600 leading-relaxed">{t[lang].aboutDesc}</p>
           </section>
 
@@ -2280,11 +2365,12 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
               <button onClick={() => { setResult(null); setTranscript(''); setWriteText(''); setIsSelfRevealed(false); }} className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex flex-col items-center gap-1 hover:bg-slate-200">
                 <RefreshCw size={20} /> {t[lang].reciteAgain}
               </button>
-              {result.score >= 80 && (
-                <button onClick={onSuccess} className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-bold flex flex-col items-center gap-1 shadow-md shadow-green-200">
-                  <Coins size={20} /> {t[lang].claimReward}
-                </button>
-              )}
+              <button 
+                onClick={onSuccess} 
+                className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold flex flex-col items-center gap-1 shadow-md shadow-emerald-200 hover:bg-emerald-700 transition-all"
+              >
+                <CheckCircle size={20} /> {lang === 'ar' ? 'تم بنجاح' : 'Success!'}
+              </button>
             </div>
           </motion.div>
         )}
@@ -2295,11 +2381,12 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
 
 // --- Parent Screen (Dashboard) ---
 function ParentScreen({ 
-  lessons, setLessons, lang, setLang, isPremium, onUpgrade, setIsRemoteModalOpen,
+  lessons, onAddLesson, onDeleteLesson, lang, setLang, isPremium, onUpgrade, setIsRemoteModalOpen,
   newTitle, setNewTitle, newText, setNewText, customLang, setCustomLang, isExtractingRemote
 }: { 
   lessons: Lesson[], 
-  setLessons: (l: Lesson[]) => void, 
+  onAddLesson: (l: Omit<Lesson, 'id'>) => Promise<void>,
+  onDeleteLesson: (id: string) => Promise<void>,
   lang: Language, 
   setLang: (l: Language) => void, 
   isPremium: boolean, 
@@ -2322,19 +2409,18 @@ function ParentScreen({
   const [endAyah, setEndAyah] = useState<number>(7);
   const [isLoadingQuran, setIsLoadingQuran] = useState(false);
 
-  const handleAddCustom = () => {
+  const handleAddCustom = async () => {
     if (!isPremium && lessons.length >= 5) {
       onUpgrade();
       return;
     }
     if (newTitle.trim() && newText.trim()) {
-      setLessons([...lessons, { 
-        id: Date.now().toString(), 
+      await onAddLesson({ 
         title: newTitle, 
         text: newText, 
         type: 'custom',
         lang: customLang
-      }]);
+      });
       setNewTitle('');
       setNewText('');
     }
@@ -2355,7 +2441,7 @@ function ParentScreen({
       const surahName = data.surahName;
       const title = `${surahName} ${t[lang].ayahsRange.replace('{start}', String(startAyah)).replace('{end}', String(endAyah))}`;
       
-      setLessons([...lessons, { id: Date.now().toString(), title, text, type: 'quran' }]);
+      await onAddLesson({ title, text, type: 'quran' });
       alert(t[lang].ayahsAddedSuccessfully);
     } catch (e) {
       alert(t[lang].errorFetchingAyahsCheckInternet);
@@ -2363,8 +2449,8 @@ function ParentScreen({
     setIsLoadingQuran(false);
   };
 
-  const handleDelete = (id: string) => {
-    setLessons(lessons.filter(l => l.id !== id));
+  const handleDelete = async (id: string) => {
+    await onDeleteLesson(id);
   };
 
   const activeSurah = surahs.find(s => s.number === selectedSurah);

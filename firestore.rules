@@ -49,9 +49,31 @@ service cloud.firestore {
              data.lastActive is timestamp;
     }
 
+    function isValidProfile(data) {
+      return data.xp is number && data.coins is number && data.donations is number &&
+             (data.updatedAt is timestamp || !('updatedAt' in data));
+    }
+
+    function isValidLesson(data) {
+      return data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 &&
+             data.text is string && data.text.size() > 0 &&
+             (data.createdAt is timestamp || !('createdAt' in data));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId && isValidProfile(request.resource.data);
+      
+      match /lessons/{lessonId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if request.auth != null && request.auth.uid == userId && (request.method == 'delete' || isValidLesson(request.resource.data));
+      }
+    }
 
     match /uploads/{uploadId} {
       // Only authenticated users can create uploads

@@ -24,6 +24,32 @@
         "lastActive": { "type": "string", "format": "date-time" }
       },
       "required": ["deviceId", "lastActive"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User statistics and rewards.",
+      "type": "object",
+      "properties": {
+        "xp": { "type": "number" },
+        "coins": { "type": "number" },
+        "donations": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A customized memorization task or Quranic lesson.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["quran", "custom"] },
+        "lang": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -34,6 +60,14 @@
     "/pairings/{deviceId}": {
       "schema": "DevicePairing",
       "description": "Collection of active device pairings"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile data"
+    },
+    "/users/{userId}/lessons/{lessonId}": {
+      "schema": "Lesson",
+      "description": "User specific tasks and lessons"
     }
   }
 }

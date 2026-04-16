@@ -66,3 +66,10 @@
 .force-scrollbar::-webkit-scrollbar {
   display: block;
 }
+
+/* Prevent horizontal overflow globally */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  position: relative;
+}

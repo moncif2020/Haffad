@@ -142,7 +142,7 @@ export function LandingPage() {
                   className={`flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 font-medium transition-all text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 ${isLangOpen ? 'ring-2 ring-emerald-500 border-transparent bg-emerald-50' : ''}`}
                 >
                   <Globe size={18} />
-                  <span className="hidden xs:inline">{currentLang.name}</span>
+                  <span className="xs:inline">{currentLang.name}</span>
                 </button>
                 {isLangOpen && (
                   <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200 z-50 flex flex-col" style={isRtl ? { left: 0 } : { right: 0 }}>
