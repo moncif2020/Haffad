@@ -9,6 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 import { translations } from './translations';
 import { diff_match_patch } from 'diff-match-patch';
 import { useAudio } from './AudioContext';
+import { useCallback } from 'react';
 
 import { QRCodeSVG } from 'qrcode.react';
 import { db, auth, storage, googleProvider } from './firebase';
@@ -1000,21 +1001,53 @@ export default function App() {
   // --- Screen Wake Lock & TV Logic ---
   const wakeLockRef = useRef<any>(null);
 
-  useEffect(() => {
-    const requestWakeLock = async () => {
-      if ('wakeLock' in navigator) {
-        try {
-          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        } catch (err: any) {
-          console.warn('Wake Lock Error:', err.name, err.message);
-        }
+  const requestWakeLock = useCallback(async () => {
+    if ('wakeLock' in navigator && !wakeLockRef.current) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        console.log('Wake Lock Acquired');
+        wakeLockRef.current.addEventListener('release', () => {
+          console.log('Wake Lock Released');
+          wakeLockRef.current = null;
+        });
+      } catch (err: any) {
+        console.warn('Wake Lock Request Failed:', err.name, err.message);
       }
-    };
+    }
+  }, []);
 
-    requestWakeLock();
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      } catch (err) {
+        console.error('Wake Lock Release Error:', err);
+      }
+    }
+  }, []);
 
+  // Sync Wake Lock with activity
+  useEffect(() => {
+    // Acquire when playing audio or in specific active views (Mushaf, Game)
+    if (isPlaying || view === 'mushaf' || view === 'game') {
+      requestWakeLock();
+      
+      // Also try to play the fallback video when user starts activity
+      const fallbackVideo = document.getElementById('tv-fallback-video') as HTMLVideoElement;
+      if (fallbackVideo && fallbackVideo.paused) {
+        fallbackVideo.play().catch(() => {
+          // Silent catch for autoplay block
+        });
+      }
+    } else {
+      // Release if no activity
+      releaseWakeLock();
+    }
+
+    // Handle visibility change: re-acquire if app is back to foreground
     const handleVisibilityChange = async () => {
-      if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && (isPlaying || view === 'mushaf' || view === 'game')) {
         await requestWakeLock();
       }
     };
@@ -1022,12 +1055,8 @@ export default function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLockRef.current) {
-        wakeLockRef.current.release().catch(() => {});
-        wakeLockRef.current = null;
-      }
     };
-  }, []);
+  }, [isPlaying, view, requestWakeLock, releaseWakeLock]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -1506,7 +1535,7 @@ export default function App() {
 
       {/* Hidden constant video loop to keep TV active on older systems (Fallback) */}
       <video 
-        autoPlay 
+        id="tv-fallback-video"
         muted 
         loop 
         playsInline 
