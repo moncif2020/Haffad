@@ -31,12 +31,12 @@ export function TVLoginPage() {
       // Write the user info to the session document
       await setDoc(doc(db, 'tv_sessions', sessionId), {
         uid: user.uid,
-        displayName: user.displayName,
-        email: user.email,
-        photoURL: user.photoURL,
+        displayName: user.displayName || 'User',
+        email: user.email || '',
+        photoURL: user.photoURL || '',
         linkedAt: serverTimestamp(),
         status: 'linked'
-      });
+      }, { merge: true });
 
       setStatus('success');
       // After 3 seconds, redirect to home

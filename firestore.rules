@@ -152,7 +152,7 @@ service cloud.firestore {
       // المستخدم يربط الجلسة بهويته
       allow update: if isSignedIn() &&
                        isValidProfileData(request.resource.data) &&
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'displayName', 'photoURL', 'status']) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'displayName', 'photoURL', 'status', 'email', 'linkedAt']) &&
                        request.resource.data.status == 'linked' &&
                        request.resource.data.uid == request.auth.uid &&
                        resource.data.status == 'waiting';

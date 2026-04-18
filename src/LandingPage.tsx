@@ -10,7 +10,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { landingTranslations, languages } from './landing-translations';
 import { auth, googleProvider, db } from './firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export function LandingPage() {
   const [lang, setLang] = useState('ar');
@@ -18,6 +18,13 @@ export function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
   const [tvSessionId, setTvSessionId] = useState<string | null>(null);
+  const [deviceId] = useState<string>(() => {
+    const saved = localStorage.getItem('hoffad_device_id');
+    if (saved) return saved;
+    const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    localStorage.setItem('hoffad_device_id', newId);
+    return newId;
+  });
   const [isLangOpen, setIsLangOpen] = useState(false);
   const navigate = useNavigate();
   const langRef = useRef<HTMLDivElement>(null);
@@ -84,10 +91,21 @@ export function LandingPage() {
     }
   };
 
-  const handleTVLogin = () => {
+  const handleTVLogin = async () => {
     const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     setTvSessionId(sessionId);
     setIsTVModalOpen(true);
+
+    // Initialize the session in Firestore FIRST
+    try {
+      await setDoc(doc(db, 'tv_sessions', sessionId), {
+        deviceId: deviceId,
+        status: 'waiting',
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error("Failed to initialize TV session:", err);
+    }
 
     // Listen for the session to be linked
     const unsubscribe = onSnapshot(doc(db, 'tv_sessions', sessionId), (snapshot) => {
