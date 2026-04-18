@@ -786,11 +786,14 @@ export default function App() {
 
   // Real-time Data Listeners
   useEffect(() => {
-    if (!user) {
-      setLessons([]);
-      setXp(0);
-      setCoins(0);
-      setDonations(0);
+    // Only listen if we have a real Firebase user (not a simulated session)
+    if (!user || !auth.currentUser) {
+      if (!user) {
+        setLessons([]);
+        setXp(0);
+        setCoins(0);
+        setDonations(0);
+      }
       return;
     }
 
@@ -917,7 +920,22 @@ export default function App() {
   useEffect(() => {
     if (!deviceId) return;
     
-    let q = query(collection(db, 'uploads'), where('deviceId', '==', deviceId));
+    // Construct query based on authentication state
+    // If not logged in (TV mode initial), we listen by deviceId only
+    // If logged in, we add the userId filter for extra security
+    let q;
+    if (auth.currentUser) {
+      q = query(
+        collection(db, 'uploads'), 
+        where('deviceId', '==', deviceId),
+        where('userId', '==', auth.currentUser.uid)
+      );
+    } else {
+      q = query(
+        collection(db, 'uploads'), 
+        where('deviceId', '==', deviceId)
+      );
+    }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {

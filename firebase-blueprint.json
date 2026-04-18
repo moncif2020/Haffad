@@ -50,6 +50,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "title", "text", "createdAt"]
+    },
+    "TVSession": {
+      "title": "TV Session",
+      "description": "A session for pairing a mobile device with a TV.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "status": { "type": "string", "enum": ["waiting", "linked"] },
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "createdAt"]
     }
   },
   "firestore": {
@@ -68,6 +83,10 @@
     "/users/{userId}/lessons/{lessonId}": {
       "schema": "Lesson",
       "description": "User specific tasks and lessons"
+    },
+    "/tv_sessions/{sessionId}": {
+      "schema": "TVSession",
+      "description": "Collection of TV pairing sessions"
     }
   }
 }
