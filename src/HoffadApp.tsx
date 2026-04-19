@@ -787,7 +787,8 @@ export default function App() {
   // Real-time Data Listeners
   useEffect(() => {
     // Only listen if we have a real Firebase user (not a simulated session)
-    if (!user || !auth.currentUser) {
+    // and make sure we don't listen with a custom session UID that might not be in auth yet
+    if (!user || !auth.currentUser || user.uid !== auth.currentUser.uid) {
       if (!user) {
         setLessons([]);
         setXp(0);
@@ -921,8 +922,8 @@ export default function App() {
     if (!deviceId) return;
     
     // Construct query based on authentication state
-    // If not logged in (TV mode initial), we listen by deviceId only
-    // If logged in, we add the userId filter for extra security
+    // If not logged in (TV mode initial), we listen by deviceId only (allowed by rules)
+    // If logged in, we add the userId filter which is REQUIRED by rules for auth users
     let q;
     if (auth.currentUser) {
       q = query(
@@ -995,7 +996,7 @@ export default function App() {
       console.error("Firestore Listener Error:", error);
     });
     return () => unsubscribe();
-  }, [deviceId, lang]);
+  }, [deviceId, lang, user]);
 
   useEffect(() => {
     const handleAppKeys = (e: KeyboardEvent) => {
