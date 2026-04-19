@@ -59,12 +59,13 @@
         "sessionId": { "type": "string" },
         "deviceId": { "type": "string" },
         "status": { "type": "string", "enum": ["waiting", "linked"] },
+        "currentAnonUid": { "type": "string" },
         "uid": { "type": "string" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["status", "createdAt"]
+      "required": ["status", "createdAt", "deviceId"]
     }
   },
   "firestore": {

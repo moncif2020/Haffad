@@ -806,14 +806,21 @@ export default function App() {
         if (data.coins !== undefined) setCoins(data.coins);
         if (data.donations !== undefined) setDonations(data.donations);
       } else {
-        // Initialize profile if not exists
+        // Initialize profile if not exists - use merge safely
         setDoc(doc(db, 'users', user.uid), {
-          xp: 0,
-          coins: 0,
+          xp: 10, // Starting bonus
+          coins: 10,
           donations: 0,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp()
+        }, { merge: true }).catch(err => {
+          console.error("Profile Init Error:", err);
+          handleFirestoreError(err, 'write', `users/${user.uid}`);
         });
       }
+    }, (error) => {
+      console.error("Profile Listener Error:", error);
+      handleFirestoreError(error, 'list', `users/${user.uid}`);
     });
 
     // 2. Lessons Listener
@@ -827,6 +834,9 @@ export default function App() {
         ...doc.data()
       })) as Lesson[];
       setLessons(fetchedLessons);
+    }, (error) => {
+      console.error("Lessons Listener Error:", error);
+      handleFirestoreError(error, 'list', `users/${user.uid}/lessons`);
     });
 
     return () => {

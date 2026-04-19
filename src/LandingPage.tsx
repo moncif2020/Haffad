@@ -9,8 +9,8 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { landingTranslations, languages } from './landing-translations';
 import { auth, googleProvider, db } from './firebase';
-import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { signInWithPopup, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { doc, onSnapshot, deleteDoc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 
 export function LandingPage() {
   const [lang, setLang] = useState('ar');
@@ -55,7 +55,7 @@ export function LandingPage() {
 
     // If already logged in, redirect to app
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
+      if (user && !user.isAnonymous) {
         navigate('/app');
       }
     });
@@ -92,6 +92,16 @@ export function LandingPage() {
   };
 
   const handleTVLogin = async () => {
+    // 1. Sign in anonymously to get a real Firebase identity for the TV
+    let anonymousUid = '';
+    try {
+      const anonResult = await signInAnonymously(auth);
+      anonymousUid = anonResult.user.uid;
+    } catch (err) {
+      console.error("Anonymous login failed:", err);
+      // Fallback is still possible but rules will be stricter
+    }
+
     const sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     setTvSessionId(sessionId);
     setIsTVModalOpen(true);
@@ -101,6 +111,7 @@ export function LandingPage() {
       await setDoc(doc(db, 'tv_sessions', sessionId), {
         deviceId: deviceId,
         status: 'waiting',
+        currentAnonUid: anonymousUid, // Store the TV's temp identity
         createdAt: serverTimestamp()
       });
     } catch (err) {
@@ -112,29 +123,22 @@ export function LandingPage() {
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data.status === 'linked') {
-          // Try to get a custom token from our backend for "real" authentication
-          fetch('/api/generate-custom-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid: data.uid })
-          })
-          .then(res => res.json())
-          .then(tokenData => {
-            if (tokenData.customToken) {
-              localStorage.setItem('hoffad_custom_token', tokenData.customToken);
-            }
-          })
-          .catch(err => console.warn("Custom token not available, falling back to session simulation:", err))
-          .finally(() => {
-            // Store the session info in localStorage as fallback
-            localStorage.setItem('hoffad_session_uid', data.uid);
-            localStorage.setItem('hoffad_session_name', data.displayName || '');
-            localStorage.setItem('hoffad_session_photo', data.photoURL || '');
-            
-            unsubscribe();
-            navigate('/app');
-          });
+          // Store the session info in localStorage
+          localStorage.setItem('hoffad_session_uid', data.uid);
+          localStorage.setItem('hoffad_session_name', data.displayName || '');
+          localStorage.setItem('hoffad_session_photo', data.photoURL || '');
+          
+          unsubscribe();
+          navigate('/app');
         }
+      }
+    }, (error) => {
+      console.error("TV Session Listener Error:", error);
+      // If error happens here, the TV can't see its own session
+      if (error.message.includes('permission')) {
+        alert(lang === 'ar' 
+          ? "خطأ في الاتصال بقاعدة البيانات. يرجى التأكد من تفعيل Firestore ونشر قواعد الأمان." 
+          : "Database connection error. Please ensure Firestore is enabled and rules are deployed.");
       }
     });
 

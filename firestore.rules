@@ -79,7 +79,8 @@ service cloud.firestore {
              data.status in ['waiting', 'linked'] &&
              isValidId(data.deviceId) &&
              data.createdAt is timestamp &&
-             data.createdAt <= request.time;
+             data.createdAt <= request.time &&
+             (data.get('currentAnonUid', '') is string);
     }
 
     // ═══════════════════════════════════════
@@ -97,7 +98,11 @@ service cloud.firestore {
                        request.resource.data.donations is number;
       
       allow update: if isOwner(userId) &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAt']);
+                       // السماح بالتحديث الأولي للبيانات أو التحديثات اللاحقة
+                       (
+                         !resource.data.keys().hasAll(['xp', 'coins', 'donations']) ||
+                         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAt'])
+                       );
       
       allow delete: if isOwner(userId);
 
@@ -114,21 +119,21 @@ service cloud.firestore {
     match /uploads/{uploadId} {
       // السماح بالقراءة للصاحب أو إذا كان الجهاز يحمل الـ id الصحيح (للعرض على التلفاز)
       allow get: if isValidId(uploadId) && (
-        (isSignedIn() && resource.data.userId == request.auth.uid) ||
-        (resource.data.deviceId != null) // التلفاز يحتاج للقراءة عبر معرف الجهاز
+        (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.get('deviceId', '') != '')) ||
+        (resource.data.get('deviceId', '') != '')
       );
       
-      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) ||
-                     (resource.data.deviceId != null); // السماح للتلفاز بالاستماع للملفات الموجهة له
+      allow list: if (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.get('deviceId', '') != '')) ||
+                     (resource.data.get('deviceId', '') != '');
 
       allow create: if isSignedIn() && 
                        isValidRemoteUpload(request.resource.data) &&
                        request.resource.data.userId == request.auth.uid;
       
-      allow delete: if (isSignedIn() && resource.data.userId == request.auth.uid) ||
-                       (resource.data.deviceId != null); // السماح للتلفاز بحذف الملف بعد معالجته
+      allow delete: if (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.get('deviceId', '') != '')) ||
+                       (resource.data.get('deviceId', '') != '');
       
-      allow update: if false; // ممنوع التحديث
+      allow update: if false;
     }
 
     // ═══════════════════════════════════════
@@ -136,16 +141,16 @@ service cloud.firestore {
     // ═══════════════════════════════════════
     
     match /tv_sessions/{sessionId} {
-      // التلفاز يحتاج لقراءة الجلسة وهي 'waiting' أو 'linked' ليعرف متى يتم الربط
       allow get: if isValidId(sessionId) && (
         resource == null ||
         resource.data.status in ['waiting', 'linked'] || 
-        (isSignedIn() && resource.data.uid == request.auth.uid)
+        (isSignedIn() && resource.data.uid == request.auth.uid) ||
+        (isSignedIn() && resource.data.get('currentAnonUid', '') == request.auth.uid)
       );
       
       allow list: if false;
 
-      // إنشاء الجلسة من قبل التلفاز (غير مسجل دخول عادة)
+      // إنشاء الجلسة من قبل التلفاز
       allow create: if isValidTVSession(request.resource.data) && 
                        request.resource.data.status == 'waiting';
       
