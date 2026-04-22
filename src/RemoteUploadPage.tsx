@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Mic, Video, Check, Loader2, X, AlertCircle, Camera, QrCode } from 'lucide-react';
 import { db, storage, auth, googleProvider } from './firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';

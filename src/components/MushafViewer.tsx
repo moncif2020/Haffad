@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Info, Download, CheckCircle2, Search, X, Headphones, Play, Loader2, Square, Eye } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import quranMetadata from '../data/quran-metadata.json';
 import { useAudio } from '../AudioContext';
 import { fetchAyahs, getAudioUrl, QURAN_SURAHS } from '../lib/quran';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Loader2, BookOpen, Play, ArrowRight, ArrowLeft, Eye } from 'lucide-react';
 import { searchAyah, QURAN_SURAHS, normalizeArabic, getAudioUrl } from '../lib/quran';
 import { useAudio } from '../AudioContext';
@@ -26,7 +26,7 @@ export function QuranSearchInline({ onSelect, onBack, lang, autoFocus = true }: 
   const [isLoading, setIsLoading] = useState(false);
   const [ayahMatchesCount, setAyahMatchesCount] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { startNewPlaylist, isPlaying, reciter } = useAudio();
+  const { isPlaying, reciter } = useAudio();
   const [playingAyahId, setPlayingAyahId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,38 +34,6 @@ export function QuranSearchInline({ onSelect, onBack, lang, autoFocus = true }: 
       inputRef.current.focus();
     }
   }, [autoFocus]);
-
-  const handlePlayAyah = (e: React.MouseEvent, result: SearchResult) => {
-    e.stopPropagation();
-    if (!result.ayahNumber) return;
-
-    const ayahId = `${result.surahNumber}:${result.ayahNumber}`;
-    setPlayingAyahId(ayahId);
-
-    const track = {
-      url: getAudioUrl(reciter, result.surahNumber, result.ayahNumber),
-      text: result.text,
-      surah: result.surahNumber,
-      ayah: result.ayahNumber
-    };
-
-    startNewPlaylist([track], 0);
-  };
-
-  const handlePlaySurah = (e: React.MouseEvent, result: SearchResult) => {
-    e.stopPropagation();
-    const ayahId = `${result.surahNumber}:1`;
-    setPlayingAyahId(ayahId);
-    
-    const track = {
-      url: getAudioUrl(reciter, result.surahNumber, 1),
-      text: lang === 'ar' ? `سورة ${result.surahName}` : `Surah ${result.englishSurahName}`,
-      surah: result.surahNumber,
-      ayah: 1
-    };
-    
-    startNewPlaylist([track], 0);
-  };
 
   useEffect(() => {
     if (!isPlaying) {
@@ -228,7 +196,8 @@ export function QuranSearchInline({ onSelect, onBack, lang, autoFocus = true }: 
                       <div className="flex items-center gap-2">
                         <button 
                           onClick={(e) => {
-                            handlePlaySurah(e, result);
+                            e.stopPropagation();
+                            setPlayingAyahId(`${result.surahNumber}:1`);
                             onSelect(result.surahNumber, 1, 'play');
                           }}
                           className={`p-2.5 rounded-xl transition-all shadow-sm ${
@@ -292,7 +261,8 @@ export function QuranSearchInline({ onSelect, onBack, lang, autoFocus = true }: 
                       <div className="flex items-center gap-2">
                         <button 
                           onClick={(e) => {
-                            handlePlayAyah(e, result);
+                            e.stopPropagation();
+                            setPlayingAyahId(`${result.surahNumber}:${result.ayahNumber}`);
                             onSelect(result.surahNumber, result.ayahNumber!, 'play');
                           }}
                           className={`p-2.5 rounded-xl transition-all shadow-sm ${
