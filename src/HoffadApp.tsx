@@ -558,7 +558,7 @@ function ListenScreen({ lang }: { lang: Language }) {
   };
 
   return (
-    <div className="p-4 sm:p-6 pb-24 max-w-2xl mx-auto h-full overflow-y-auto">
+    <div className="p-4 sm:p-6 pb-24 max-w-7xl mx-auto h-full overflow-y-auto">
       <div className="flex items-center gap-4 mb-8">
         <div className="bg-emerald-100 p-4 rounded-2xl shadow-sm">
           <Headphones className="text-emerald-600" size={32} />
@@ -570,7 +570,7 @@ function ListenScreen({ lang }: { lang: Language }) {
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex bg-slate-200 p-1.5 rounded-2xl mb-8 shadow-inner">
+      <div className="flex bg-slate-200 p-1.5 rounded-2xl mb-8 shadow-inner max-w-2xl mx-auto">
         <button 
           onClick={() => { setListenMode('quran'); stopListening(); }}
           className={`flex-1 py-4 rounded-xl font-bold text-base transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${listenMode === 'quran' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
@@ -587,162 +587,183 @@ function ListenScreen({ lang }: { lang: Language }) {
 
       {listenMode === 'quran' ? (
         playlist.length > 0 && currentTrackIndex >= 0 && currentTrackIndex < playlist.length ? (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-8 rounded-[32px] shadow-xl border border-slate-100 mb-8 flex flex-col items-center text-center">
-            <div className="bg-emerald-50 p-5 rounded-full mb-6">
-              <Volume2 size={48} className="text-emerald-500 animate-pulse" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-500 mb-4">
-              {lang === 'ar' ? selectedSurahData?.name : `${selectedSurahData?.englishName} (${selectedSurahData?.name})`} - {t[lang].ayah} {playlist[currentTrackIndex].ayah}
-            </h3>
-            <div className="bg-emerald-50/50 p-8 rounded-3xl border-2 border-emerald-100/50 mb-10 w-full min-h-[160px] flex items-center justify-center shadow-inner">
-              <p className="text-2xl sm:text-3xl leading-relaxed font-arabic text-slate-800">
-                {playlist[currentTrackIndex].text} ۝
-              </p>
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="bg-white p-6 sm:p-10 rounded-[40px] shadow-2xl border border-slate-100 mb-8 flex flex-col lg:flex-row gap-8 items-center lg:items-center text-center lg:text-right"
+          >
+            <div className="flex-1 w-full order-2 lg:order-1">
+              <div className="bg-emerald-50/50 p-8 sm:p-12 rounded-[32px] border-2 border-emerald-100/50 mb-0 w-full min-h-[250px] flex items-center justify-center shadow-inner">
+                <p className="text-3xl sm:text-5xl leading-relaxed sm:leading-[1.8] font-arabic text-slate-800 text-center">
+                  {playlist[currentTrackIndex].text} ۝
+                </p>
+              </div>
             </div>
             
-            <div className="flex items-center gap-6 w-full justify-center">
-              <button 
-                onClick={stopListening}
-                className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center hover:bg-red-200 focus:ring-4 focus:ring-red-300 outline-none transition-all"
-                title="S - Stop"
-              >
-                <Square size={28} fill="currentColor" />
-              </button>
-              <button 
-                onClick={togglePlayPause}
-                className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-xl shadow-emerald-200 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all transform active:scale-95"
-                title="Space - Play/Pause"
-              >
-                {isPlaying ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-2" />}
-              </button>
-            </div>
-            <div className="flex flex-col items-center gap-2 mt-8">
-              <p className="text-slate-500 font-bold text-lg">
-                {t[lang].currentRepetition.replace('{current}', String((currentTrackIndex % repetitions) + 1)).replace('{total}', String(repetitions))}
-              </p>
-              {rangeRepetitions > 1 && (
-                <p className="text-emerald-700 font-black text-sm bg-emerald-100 px-4 py-1.5 rounded-full uppercase tracking-wide">
-                  {t[lang].currentRangeRepetition
-                    .replace('{current}', String(Math.floor(currentTrackIndex / (playlist.length / rangeRepetitions)) + 1))
-                    .replace('{total}', String(rangeRepetitions))}
+            <div className="w-full lg:w-1/3 flex flex-col items-center justify-center order-1 lg:order-2 bg-emerald-50/30 p-8 rounded-[32px] border border-emerald-100">
+              <div className="bg-emerald-100 p-6 rounded-full mb-6">
+                <Volume2 size={56} className="text-emerald-500 animate-pulse" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-700 mb-6">
+                {lang === 'ar' ? selectedSurahData?.name : `${selectedSurahData?.englishName} (${selectedSurahData?.name})`}
+                <span className="block text-lg text-emerald-600 mt-2">{t[lang].ayah} {playlist[currentTrackIndex].ayah}</span>
+              </h3>
+              
+              <div className="flex items-center gap-6 w-full justify-center mb-8">
+                <button 
+                  onClick={stopListening}
+                  className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center hover:bg-red-200 focus:ring-4 focus:ring-red-300 outline-none transition-all"
+                  title="S - Stop"
+                >
+                  <Square size={28} fill="currentColor" />
+                </button>
+                <button 
+                  onClick={togglePlayPause}
+                  className="w-24 h-24 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-xl shadow-emerald-200 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all transform active:scale-95"
+                  title="Space - Play/Pause"
+                >
+                  {isPlaying ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-2" />}
+                </button>
+              </div>
+
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-slate-600 font-bold text-xl">
+                  {t[lang].currentRepetition.replace('{current}', String((currentTrackIndex % repetitions) + 1)).replace('{total}', String(repetitions))}
                 </p>
-              )}
+                {rangeRepetitions > 1 && (
+                  <p className="text-emerald-800 font-black text-sm bg-emerald-100 px-6 py-2 rounded-full uppercase tracking-wide">
+                    {t[lang].currentRangeRepetition
+                      .replace('{current}', String(Math.floor(currentTrackIndex / (playlist.length / rangeRepetitions)) + 1))
+                      .replace('{total}', String(rangeRepetitions))}
+                  </p>
+                )}
+              </div>
             </div>
           </motion.div>
         ) : (
-          <div className="bg-white p-6 sm:p-8 rounded-[32px] shadow-lg border border-slate-100 space-y-6">
-            <button
-              onClick={() => setIsTextSearchOpen(true)}
-              className="w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all border border-emerald-100"
-            >
-              <Search size={20} />
-              <span>{lang === 'ar' ? 'البحث بنص الآية' : 'Search by Verse Text'}</span>
-            </button>
+          <div className="bg-white p-6 sm:p-10 rounded-[40px] shadow-lg border border-slate-100 space-y-8 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <button
+                  onClick={() => setIsTextSearchOpen(true)}
+                  className="w-full flex items-center justify-center gap-3 p-5 rounded-2xl font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all border border-emerald-100 text-lg"
+                >
+                  <Search size={22} />
+                  <span>{lang === 'ar' ? 'البحث بنص الآية' : 'Search by Verse Text'}</span>
+                </button>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-slate-100"></span>
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-slate-100"></span>
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-4 text-slate-400 font-bold">
+                      {lang === 'ar' ? 'أو اختر السورة والآية' : 'Or choose Surah & Ayah'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].chooseSurah}</label>
+                    <CustomSelect 
+                      value={selectedSurah} 
+                      onChange={(val) => handleSurahChange({ target: { value: val } } as any)}
+                      options={surahs.map(s => ({ 
+                        value: s.number, 
+                        label: lang === 'ar' 
+                          ? `${s.number}. ${s.name}`
+                          : `${s.number}. ${s.englishName} (${s.name})`
+                      }))}
+                      lang={lang}
+                      placeholder={lang === 'ar' ? 'ابحث باسم السورة أو رقمها...' : 'Search by surah name or number...'}
+                    />
+                  </div>
+
+                  <div className="flex gap-4 sm:gap-6">
+                    <div className="flex-1">
+                      <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].fromAyah}</label>
+                      <input 
+                        type="number" min="1" max={toAyah} 
+                        value={fromAyah} onChange={e => setFromAyah(Number(e.target.value))}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold text-xl"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].toAyah}</label>
+                      <input 
+                        type="number" min={fromAyah} max={maxAyahs} 
+                        value={toAyah} onChange={e => setToAyah(Number(e.target.value))}
+                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold text-xl"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-slate-400 font-bold">
-                  {lang === 'ar' ? 'أو اختر السورة والآية' : 'Or choose Surah & Ayah'}
-                </span>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].reciter}</label>
+                  <CustomSelect 
+                    value={reciter} 
+                    onChange={(val) => setReciter(val)}
+                    options={RECITERS.map(r => ({ value: r.id, label: r.name }))}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].repetitions}</label>
+                  <div className="flex items-center gap-6 bg-slate-50 p-4 rounded-2xl border-2 border-slate-100">
+                    <input 
+                      type="range" min="1" max="10" 
+                      value={repetitions} onChange={e => setRepetitions(Number(e.target.value))}
+                      className="flex-1 accent-emerald-500 h-2"
+                    />
+                    <span className="w-12 text-center font-black text-emerald-600 text-2xl">{repetitions}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].rangeRepetitions}</label>
+                  <div className="flex items-center gap-6 bg-slate-50 p-4 rounded-2xl border-2 border-slate-100">
+                    <input 
+                      type="range" min="1" max="10" 
+                      value={rangeRepetitions} onChange={e => setRangeRepetitions(Number(e.target.value))}
+                      className="flex-1 accent-emerald-500 h-2"
+                    />
+                    <span className="w-12 text-center font-black text-emerald-600 text-2xl">{rangeRepetitions}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].chooseSurah}</label>
-              <CustomSelect 
-                value={selectedSurah} 
-                onChange={(val) => handleSurahChange({ target: { value: val } } as any)}
-                options={surahs.map(s => ({ 
-                  value: s.number, 
-                  label: lang === 'ar' 
-                    ? `${s.number}. ${s.name}`
-                    : `${s.number}. ${s.englishName} (${s.name})`
-                }))}
-                lang={lang}
-                placeholder={lang === 'ar' ? 'ابحث باسم السورة أو رقمها...' : 'Search by surah name or number...'}
-              />
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <button 
+                onClick={startListening}
+                disabled={isLoading}
+                className="flex-[2] bg-emerald-500 text-white font-bold py-5 rounded-2xl shadow-xl shadow-emerald-100 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-3 text-xl"
+              >
+                {isLoading ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" size={24} />}
+                <span>{t[lang].startListening}</span>
+              </button>
+              <button 
+                onClick={handleDownload}
+                disabled={isDownloading || isLoading}
+                className="flex-1 bg-slate-100 text-slate-700 font-bold py-5 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-3 hover:bg-slate-200 focus:ring-4 focus:ring-slate-300 outline-none transition-all text-xl"
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    {t[lang].downloading.replace('{progress}', String(downloadProgress))}
+                  </>
+                ) : (
+                  <>
+                    <Download size={24} />
+                    {t[lang].downloadOffline}
+                  </>
+                )}
+              </button>
             </div>
-
-            <div className="flex gap-4 sm:gap-6">
-              <div className="flex-1">
-                <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].fromAyah}</label>
-                <input 
-                  type="number" min="1" max={toAyah} 
-                  value={fromAyah} onChange={e => setFromAyah(Number(e.target.value))}
-                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold text-lg"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-bold text-slate-700 mb-2">{t[lang].toAyah}</label>
-                <input 
-                  type="number" min={fromAyah} max={maxAyahs} 
-                  value={toAyah} onChange={e => setToAyah(Number(e.target.value))}
-                  className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center font-bold text-lg"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].reciter}</label>
-              <CustomSelect 
-                value={reciter} 
-                onChange={(val) => setReciter(val)}
-                options={RECITERS.map(r => ({ value: r.id, label: r.name }))}
-              />
-            </div>
-
-            <div>
-              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].repetitions}</label>
-              <div className="flex items-center gap-6 bg-slate-50 p-3 rounded-2xl border-2 border-slate-100">
-                <input 
-                  type="range" min="1" max="10" 
-                  value={repetitions} onChange={e => setRepetitions(Number(e.target.value))}
-                  className="flex-1 accent-emerald-500 h-2"
-                />
-                <span className="w-12 text-center font-black text-emerald-600 text-xl">{repetitions}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].rangeRepetitions}</label>
-              <div className="flex items-center gap-6 bg-slate-50 p-3 rounded-2xl border-2 border-slate-100">
-                <input 
-                  type="range" min="1" max="10" 
-                  value={rangeRepetitions} onChange={e => setRangeRepetitions(Number(e.target.value))}
-                  className="flex-1 accent-emerald-500 h-2"
-                />
-                <span className="w-12 text-center font-black text-emerald-600 text-xl">{rangeRepetitions}</span>
-              </div>
-            </div>
-
-            <button 
-              onClick={startListening}
-              disabled={isLoading}
-              className="w-full bg-emerald-500 text-white font-bold py-5 rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-3 text-lg"
-            >
-              {isLoading ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" />}
-              <span>{t[lang].startListening}</span>
-            </button>
-            <button 
-              onClick={handleDownload}
-              disabled={isDownloading || isLoading}
-              className="w-full bg-slate-100 text-slate-700 font-bold py-5 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-3 hover:bg-slate-200 focus:ring-4 focus:ring-slate-300 outline-none transition-all text-lg"
-            >
-              {isDownloading ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  {t[lang].downloading.replace('{progress}', String(downloadProgress))}
-                </>
-              ) : (
-                <>
-                  <Download />
-                  {t[lang].downloadOffline}
-                </>
-              )}
-            </button>
             {isTextSearchOpen && (
               <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
                 <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
@@ -1616,7 +1637,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className={`flex-1 ${view === 'mushaf' ? 'max-w-5xl' : 'max-w-md'} w-full mx-auto p-2 sm:p-4 flex flex-col pb-8`}>
+      <main className={`flex-1 ${view === 'mushaf' ? 'max-w-7xl' : 'max-w-md lg:max-w-7xl'} w-full mx-auto p-2 sm:p-4 flex flex-col pb-8 transition-all duration-500`}>
         <AnimatePresence mode="wait">
           {view === 'garden' && (
             <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
@@ -1698,54 +1719,60 @@ function UpgradeScreen({ lang, onUpgrade }: { lang: Language, onUpgrade: () => v
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-      className="flex flex-col gap-6 py-4"
+      className="flex flex-col gap-6 py-4 max-w-5xl mx-auto"
     >
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden">
+      <div className="bg-white p-8 sm:p-12 rounded-[40px] shadow-2xl border border-slate-100 relative overflow-hidden">
         {/* Decorative background */}
-        <div className="absolute top-0 right-0 p-4 opacity-10">
-          <Sparkles size={120} className="text-emerald-600" />
+        <div className="absolute top-0 right-0 p-8 opacity-5">
+          <Sparkles size={200} className="text-emerald-600" />
         </div>
 
-        <div className="flex flex-col items-center text-center mb-10">
-          <div className="p-4 bg-emerald-100 rounded-full mb-4">
-            <Star className="text-emerald-600" size={48} fill="currentColor" />
+        <div className="flex flex-col items-center text-center mb-12 relative z-10">
+          <div className="p-6 bg-emerald-100 rounded-full mb-6">
+            <Star className="text-emerald-600" size={64} fill="currentColor" />
           </div>
-          <h2 className="text-3xl font-black text-slate-800 mb-2">{t[lang].upgrade}</h2>
-          <p className="text-slate-500 max-w-xs">{t[lang].upgradeDesc}</p>
+          <h2 className="text-4xl sm:text-5xl font-black text-slate-800 mb-4">{t[lang].upgrade}</h2>
+          <p className="text-slate-500 text-lg max-w-lg">{t[lang].upgradeDesc}</p>
         </div>
 
-        <div className="space-y-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12 relative z-10">
           {[
-            { icon: <Mic size={20} />, text: t[lang].unlimitedMemorization },
-            { icon: <Check size={20} />, text: t[lang].advancedTajweed },
-            { icon: <BookOpen size={20} />, text: t[lang].unlimitedLessons },
-            { icon: <Download size={20} />, text: t[lang].offlineMode },
+            { icon: <Mic size={24} />, text: t[lang].unlimitedMemorization },
+            { icon: <Check size={24} />, text: t[lang].advancedTajweed },
+            { icon: <BookOpen size={24} />, text: t[lang].unlimitedLessons },
+            { icon: <Download size={24} />, text: t[lang].offlineMode },
           ].map((feature, i) => (
-            <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="text-emerald-600">{feature.icon}</div>
-              <span className="font-bold text-slate-700">{feature.text}</span>
+            <div key={i} className="flex items-center gap-5 p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-emerald-50/50 transition-colors">
+              <div className="bg-white p-3 rounded-2xl shadow-sm text-emerald-600 font-bold">{feature.icon}</div>
+              <span className="font-bold text-slate-700 text-lg">{feature.text}</span>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 relative z-10">
           <button 
             onClick={onUpgrade}
-            className="p-6 bg-emerald-500 text-white rounded-3xl shadow-lg shadow-emerald-200 flex flex-col items-center gap-1 hover:bg-emerald-600 transition-all active:scale-95"
+            className="p-8 bg-emerald-500 text-white rounded-[32px] shadow-xl shadow-emerald-100 flex flex-col items-center gap-2 hover:bg-emerald-600 transition-all transform active:scale-95 group"
           >
-            <span className="text-xl font-black">{t[lang].monthlyPlan}</span>
-            <span className="text-emerald-100 font-bold">{t[lang].priceMonthly}</span>
+            <span className="text-2xl font-black">{t[lang].monthlyPlan}</span>
+            <span className="text-emerald-100 font-bold text-lg">{t[lang].priceMonthly}</span>
+            <div className="mt-4 w-full h-1 bg-white/20 rounded-full overflow-hidden">
+               <div className="h-full bg-white w-0 group-hover:w-full transition-all duration-700" />
+            </div>
           </button>
 
           <button 
             onClick={onUpgrade}
-            className="p-6 bg-slate-800 text-white rounded-3xl shadow-lg shadow-slate-200 flex flex-col items-center gap-1 hover:bg-slate-900 transition-all active:scale-95 relative"
+            className="p-8 bg-slate-800 text-white rounded-[32px] shadow-xl shadow-slate-200 flex flex-col items-center gap-2 hover:bg-slate-900 transition-all transform active:scale-95 relative overflow-hidden group"
           >
-            <div className="absolute -top-3 right-6 bg-amber-400 text-amber-950 text-xs font-black px-3 py-1 rounded-full shadow-sm">
+            <div className="absolute -top-1 -right-1 bg-amber-400 text-amber-950 text-xs font-black px-5 py-2 rounded-bl-2xl shadow-md uppercase tracking-wider">
               {t[lang].save25}
             </div>
-            <span className="text-xl font-black">{t[lang].yearlyPlan}</span>
-            <span className="text-slate-400 font-bold">{t[lang].priceYearly}</span>
+            <span className="text-2xl font-black">{t[lang].yearlyPlan}</span>
+            <span className="text-slate-400 font-bold text-lg">{t[lang].priceYearly}</span>
+            <div className="mt-4 w-full h-1 bg-white/10 rounded-full overflow-hidden">
+               <div className="h-full bg-emerald-400 w-0 group-hover:w-full transition-all duration-700" />
+            </div>
           </button>
         </div>
       </div>
@@ -1815,10 +1842,10 @@ function GardenScreen({ xp, coins, donations, onDonate, onStudyClick, lang }: { 
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-      className="flex flex-col gap-6 py-4 pb-24"
+      className="flex flex-col lg:flex-row gap-6 py-4 pb-24 items-start"
     >
       {/* Section 1: The Self (Tree & Title) */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm w-full text-center border border-slate-100">
+      <div className="bg-white p-6 rounded-3xl shadow-sm w-full lg:w-1/3 text-center border border-slate-100 h-full lg:min-h-[500px] flex flex-col justify-center">
         <h2 className="text-xl font-bold text-slate-500 mb-2">{t[lang].currentLevel}</h2>
         <h3 className={`text-3xl font-black mb-6 ${currentLevel.color}`}>{currentLevel.title}</h3>
         
@@ -1846,7 +1873,7 @@ function GardenScreen({ xp, coins, donations, onDonate, onStudyClick, lang }: { 
       </div>
 
       {/* Section 2: The Others (Charity Shop) */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm w-full border border-slate-100">
+      <div className="bg-white p-6 rounded-3xl shadow-sm w-full lg:flex-1 border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <HeartHandshake className="text-rose-500" />
@@ -1862,7 +1889,7 @@ function GardenScreen({ xp, coins, donations, onDonate, onStudyClick, lang }: { 
           {t[lang].useCoins}
         </p>
 
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
           <button 
             onClick={() => onDonate(20)}
             disabled={coins < 20}
@@ -1923,19 +1950,19 @@ function StudyScreen({ lessons, onStartGame, lang }: { lessons: Lesson[], onStar
         {t[lang].memorizationTasks}
       </h2>
       
-      <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {lessons.length === 0 ? (
-          <div className="text-center p-8 bg-white rounded-2xl border border-slate-100 text-slate-500">
+          <div className="col-span-full text-center p-8 bg-white rounded-2xl border border-slate-100 text-slate-500">
             {t[lang].noTasks}
           </div>
         ) : (
           lessons.map(lesson => (
-            <div key={lesson.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center gap-4">
+            <div key={lesson.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between gap-4 hover:shadow-md transition-shadow">
               <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-lg text-slate-800 truncate">{lesson.title}</h3>
-                <p className="text-sm text-slate-400 mt-1 line-clamp-1">{lesson.text}</p>
+                <h3 className="font-bold text-lg text-slate-800 line-clamp-2">{lesson.title}</h3>
+                <p className="text-sm text-slate-400 mt-2 line-clamp-3 font-arabic">{lesson.text}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mt-auto">
                 {lesson.type === 'custom' && (
                   <button 
                     onClick={(e) => {
@@ -1954,9 +1981,9 @@ function StudyScreen({ lessons, onStartGame, lang }: { lessons: Lesson[], onStar
                 )}
                 <button 
                   onClick={() => onStartGame(lesson)}
-                  className="bg-emerald-100 text-emerald-600 p-3 rounded-xl hover:bg-emerald-200 transition-colors"
+                  className="flex-1 bg-emerald-100 text-emerald-600 py-3 rounded-xl hover:bg-emerald-200 transition-colors font-bold flex items-center justify-center gap-2"
                 >
-                  <ArrowRight size={20} />
+                  {lang === 'ar' ? 'ابدأ المهمة' : 'Start Task'} <ArrowRight size={20} />
                 </button>
               </div>
             </div>
@@ -2554,39 +2581,56 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
         )}
 
         {result && (
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full flex flex-col items-center">
-            <div className="mb-6 text-center">
-              <div className="text-5xl mb-2">{result.score === 100 ? '🌟' : '💪'}</div>
-              <h3 className={`text-2xl font-bold ${result.score >= 80 ? 'text-green-500' : 'text-amber-500'}`}>
-                {t[lang].resultScore.replace('{score}', String(result.score))}
-              </h3>
-            </div>
-            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8 w-full text-right leading-loose text-xl font-medium">
-              {result.originalWords.map((word, index) => (
-                <span key={index} className={`inline-block mx-1 px-1 rounded ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300'}`}>
-                  {word}
-                </span>
-              ))}
-            </div>
-            {result.mistakes && result.mistakes.length > 0 && (
-              <div className="w-full text-right mb-8 bg-red-50 p-4 rounded-2xl border border-red-100">
-                <h4 className="font-bold text-red-700 mb-3 text-lg flex items-center gap-2 justify-end">
-                  {lang.startsWith('ar') ? 'ملاحظات:' : 'Notes:'} <AlertCircle size={20} />
-                </h4>
-                <ul className="list-disc list-inside text-red-600 space-y-1">
-                  {result.mistakes.map((mistake, idx) => <li key={idx} className="text-base">{mistake}</li>)}
-                </ul>
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full">
+            <div className="flex flex-col lg:flex-row gap-8 items-start">
+              <div className="flex-1 w-full bg-slate-50 p-6 sm:p-10 rounded-[32px] border border-slate-200 text-right leading-loose text-2xl sm:text-4xl font-arabic shadow-inner">
+                <div className="mb-8 text-center lg:text-right border-b border-slate-200 pb-6 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="text-5xl">{result.score === 100 ? '🌟' : '💪'}</div>
+                  <div className="text-right">
+                    <h3 className={`text-2xl sm:text-3xl font-black ${result.score >= 80 ? 'text-green-600' : 'text-amber-600'}`}>
+                      {t[lang].resultScore.replace('{score}', String(result.score))}
+                    </h3>
+                    <p className="text-slate-400 font-bold">{lang === 'ar' ? 'نتيجتك النهائية' : 'Your final score'}</p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                   {result.originalWords.map((word, index) => (
+                    <span key={index} className={`inline-block mx-1 px-1 rounded transition-colors ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300 decoration-2'}`}>
+                      {word}
+                    </span>
+                  ))}
+                </div>
               </div>
-            )}
-            <div className="flex gap-3 w-full">
-              <button onClick={() => { setResult(null); setTranscript(''); setWriteText(''); setIsSelfRevealed(false); }} className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex flex-col items-center gap-1 hover:bg-slate-200">
-                <RefreshCw size={20} /> {t[lang].reciteAgain}
+
+              {result.mistakes && result.mistakes.length > 0 && (
+                <div className="w-full lg:w-1/3 text-right bg-red-50/50 p-6 rounded-[32px] border-2 border-red-100 shadow-sm sticky top-0">
+                  <h4 className="font-black text-red-700 mb-5 text-xl flex items-center gap-3 justify-end border-b border-red-100 pb-3">
+                    {lang.startsWith('ar') ? 'تنبيهات الأخطاء' : 'Error Alerts'} <AlertCircle size={24} />
+                  </h4>
+                  <ul className="space-y-3">
+                    {result.mistakes.map((mistake, idx) => (
+                      <li key={idx} className="text-base sm:text-lg text-red-600 flex items-start gap-2 justify-end bg-white/50 p-3 rounded-xl border border-red-50">
+                        <span>{mistake}</span>
+                        <span className="mt-1.5 w-1.5 h-1.5 bg-red-400 rounded-full flex-shrink-0" />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 w-full mt-10">
+              <button 
+                onClick={() => { setResult(null); setTranscript(''); setWriteText(''); setIsSelfRevealed(false); }} 
+                className="flex-1 bg-slate-100 text-slate-600 py-6 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 hover:bg-slate-200 transition-all border-2 border-slate-200"
+              >
+                <RefreshCw size={24} /> {t[lang].reciteAgain}
               </button>
               <button 
                 onClick={onSuccess} 
-                className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-bold flex flex-col items-center gap-1 shadow-md shadow-emerald-200 hover:bg-emerald-700 transition-all"
+                className="flex-[2] bg-emerald-600 text-white py-6 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 shadow-xl shadow-emerald-100 hover:bg-emerald-700 transition-all transform active:scale-95"
               >
-                <CheckCircle size={20} /> {lang === 'ar' ? 'تم بنجاح' : 'Success!'}
+                <CheckCircle size={24} /> {lang === 'ar' ? 'حفظ التقدم ومتابعة' : 'Save Progress & Continue'}
               </button>
             </div>
           </motion.div>
