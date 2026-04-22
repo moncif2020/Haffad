@@ -1,4 +1,5 @@
 import React, { createContext, useState, useRef, useContext, useEffect } from 'react';
+import { getAudioUrl } from './lib/quran';
 
 export const AudioContext = createContext<any>(null);
 
@@ -10,6 +11,7 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const playlistRef = useRef<any[]>([]);
 
@@ -22,6 +24,7 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
     const currentPlaylist = playlistRef.current;
     if (index >= 0 && index < currentPlaylist.length) {
       setCurrentTrackIndex(index);
+      setRetryCount(0); // Reset retry count for new track
       setIsLoading(true);
       if (audioRef.current) {
         audioRef.current.src = currentPlaylist[index].url;
@@ -32,18 +35,11 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
             setIsLoading(false);
             setIsPlaying(true);
           }).catch(e => {
-            console.error("Playback failed", e);
-            setIsLoading(false);
-            setIsPlaying(false);
+            console.error("Initial playback promise failed", e);
+            // Error event will handle retry
           });
-        } else {
-          setIsLoading(false);
         }
-      } else {
-        setIsLoading(false);
       }
-    } else {
-      setIsLoading(false);
     }
   };
 
@@ -94,8 +90,26 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
 
   const handleAudioError = (e: any) => {
     console.error("Audio element error", e);
-    setIsLoading(false);
-    setIsPlaying(false);
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const currentTrack = playlistRef.current[currentTrackIndex];
+    if (currentTrack && currentTrack.surah && currentTrack.ayah && retryCount < 2) {
+      // Try next mirror
+      const nextMirrorIndex = retryCount + 1;
+      const nextUrl = getAudioUrl(reciter, currentTrack.surah, currentTrack.ayah, nextMirrorIndex);
+      
+      console.log(`Retrying playback with mirror ${nextMirrorIndex}: ${nextUrl}`);
+      setRetryCount(nextMirrorIndex);
+      setIsLoading(true);
+      
+      audio.src = nextUrl;
+      audio.load();
+      audio.play().catch(err => console.error("Mirror playback failed", err));
+    } else {
+      setIsLoading(false);
+      setIsPlaying(false);
+    }
   };
 
   const handleWaiting = () => {

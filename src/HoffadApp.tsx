@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, ChevronUp, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera } from 'lucide-react';
+import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, ChevronUp, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera, Search } from 'lucide-react';
 import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl } from './lib/quran';
 import { MushafViewer } from './components/MushafViewer';
 import { CustomSelect } from './components/CustomSelect';
+import { QuranSearchInline } from './components/QuranSearchInline';
 import { GoogleGenAI } from "@google/genai";
 import { translations } from './translations';
 import { diff_match_patch } from 'diff-match-patch';
@@ -21,6 +22,49 @@ import { signInWithPopup, signOut, onAuthStateChanged, User, signInWithCustomTok
 type View = 'garden' | 'study' | 'parent' | 'game' | 'listen' | 'mushaf' | 'about' | 'upgrade';
 type Lesson = { id: string; title: string; text: string; type?: 'quran' | 'custom'; audioUrl?: string; lang?: string };
 type Language = string;
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write';
+  path: string | null;
+  authInfo: {
+    userId: string;
+    email: string;
+    emailVerified: boolean;
+    isAnonymous: boolean;
+    providerInfo: { providerId: string; displayName: string; email: string; }[];
+  }
+}
+
+const handleFirestoreError = (error: any, operationType: any, path: string | null = null) => {
+  const authInfo = auth.currentUser ? {
+    userId: auth.currentUser.uid,
+    email: auth.currentUser.email || '',
+    emailVerified: auth.currentUser.emailVerified,
+    isAnonymous: auth.currentUser.isAnonymous,
+    providerInfo: auth.currentUser.providerData.map(p => ({
+      providerId: p.providerId,
+      displayName: p.displayName || '',
+      email: p.email || ''
+    }))
+  } : {
+    userId: 'unauthenticated',
+    email: '',
+    emailVerified: false,
+    isAnonymous: true,
+    providerInfo: []
+  };
+
+  const errorInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path,
+    authInfo
+  };
+  
+  console.error("Firestore Error:", errorInfo);
+  throw new Error(JSON.stringify(errorInfo));
+};
 
 const APP_LANGUAGES = [
   { code: 'ar', name: 'العربية', dir: 'rtl' },
@@ -319,6 +363,7 @@ function ListenScreen({ lang }: { lang: Language }) {
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isTextSearchOpen, setIsTextSearchOpen] = useState(false);
 
   const RECITERS = [
     { id: 'Husary_64kbps', name: 'محمود خليل الحصري (معلم)' },
@@ -547,7 +592,7 @@ function ListenScreen({ lang }: { lang: Language }) {
               <Volume2 size={48} className="text-emerald-500 animate-pulse" />
             </div>
             <h3 className="text-xl font-bold text-slate-500 mb-4">
-              {selectedSurahData?.name} - {t[lang].ayah} {playlist[currentTrackIndex].ayah}
+              {lang === 'ar' ? selectedSurahData?.name : `${selectedSurahData?.englishName} (${selectedSurahData?.name})`} - {t[lang].ayah} {playlist[currentTrackIndex].ayah}
             </h3>
             <div className="bg-emerald-50/50 p-8 rounded-3xl border-2 border-emerald-100/50 mb-10 w-full min-h-[160px] flex items-center justify-center shadow-inner">
               <p className="text-2xl sm:text-3xl leading-relaxed font-arabic text-slate-800">
@@ -586,12 +631,38 @@ function ListenScreen({ lang }: { lang: Language }) {
           </motion.div>
         ) : (
           <div className="bg-white p-6 sm:p-8 rounded-[32px] shadow-lg border border-slate-100 space-y-6">
+            <button
+              onClick={() => setIsTextSearchOpen(true)}
+              className="w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all border border-emerald-100"
+            >
+              <Search size={20} />
+              <span>{lang === 'ar' ? 'البحث بنص الآية' : 'Search by Verse Text'}</span>
+            </button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-slate-100"></span>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-slate-400 font-bold">
+                  {lang === 'ar' ? 'أو اختر السورة والآية' : 'Or choose Surah & Ayah'}
+                </span>
+              </div>
+            </div>
+
             <div>
               <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].chooseSurah}</label>
               <CustomSelect 
                 value={selectedSurah} 
                 onChange={(val) => handleSurahChange({ target: { value: val } } as any)}
-                options={surahs.map(s => ({ value: s.number, label: s.name }))}
+                options={surahs.map(s => ({ 
+                  value: s.number, 
+                  label: lang === 'ar' 
+                    ? `${s.number}. ${s.name}`
+                    : `${s.number}. ${s.englishName} (${s.name})`
+                }))}
+                lang={lang}
+                placeholder={lang === 'ar' ? 'ابحث باسم السورة أو رقمها...' : 'Search by surah name or number...'}
               />
             </div>
 
@@ -672,6 +743,50 @@ function ListenScreen({ lang }: { lang: Language }) {
                 </>
               )}
             </button>
+            {isTextSearchOpen && (
+              <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                  <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      {lang === 'ar' ? 'بحث في القرآن' : 'Search Quran'}
+                    </h3>
+                    <button 
+                      onClick={() => setIsTextSearchOpen(false)}
+                      className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-500"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                    <QuranSearchInline
+                      lang={lang}
+                      onSelect={(surahNum, ayahNum, action) => {
+                        setSelectedSurah(surahNum);
+                        setFromAyah(ayahNum);
+                        const surahAction = QURAN_SURAHS.find(s => s.number === surahNum);
+                        
+                        // If it's a play action, we start from this ayah until the end of surah by default
+                        // or just keep existing logic
+                        if (surahAction) {
+                          setToAyah(surahAction.numberOfAyahs);
+                        } else {
+                          setToAyah(ayahNum);
+                        }
+                        
+                        setIsTextSearchOpen(false);
+                        
+                        if (action === 'play') {
+                          // Allow state updates then start listening
+                          setTimeout(() => {
+                            startListening();
+                          }, 300);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -2510,6 +2625,7 @@ function ParentScreen({
   const [startAyah, setStartAyah] = useState<number>(1);
   const [endAyah, setEndAyah] = useState<number>(7);
   const [isLoadingQuran, setIsLoadingQuran] = useState(false);
+  const [isTextSearchOpen, setIsTextSearchOpen] = useState(false);
 
   const handleAddCustom = async () => {
     if (!isPremium && lessons.length >= 5) {
@@ -2668,6 +2784,14 @@ function ParentScreen({
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <h3 className="font-bold text-lg mb-4">{t[lang].chooseSurah}</h3>
             
+            <button
+              onClick={() => setIsTextSearchOpen(true)}
+              className="w-full flex items-center justify-center gap-3 p-3 mb-4 rounded-xl font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all border border-emerald-100"
+            >
+              <Search size={18} />
+              <span>{lang === 'ar' ? 'البحث بنص الآية' : 'Search by Verse Text'}</span>
+            </button>
+
             {surahs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-slate-400">
                 <Loader2 className="animate-spin mb-2 text-emerald-500" size={32} />
@@ -2686,7 +2810,14 @@ function ParentScreen({
                       const surah = surahs.find(s => s.number === num);
                       setEndAyah(surah ? surah.numberOfAyahs : 1);
                     }}
-                    options={surahs.map(s => ({ value: s.number, label: `${s.number}. ${s.name}` }))}
+                    options={surahs.map(s => ({ 
+                      value: s.number, 
+                      label: lang === 'ar' 
+                        ? `${s.number}. ${s.name}`
+                        : `${s.number}. ${s.englishName} (${s.name})`
+                    }))}
+                    lang={lang}
+                    placeholder={lang === 'ar' ? 'ابحث باسم السورة أو رقمها...' : 'Search by name or number...'}
                   />
                 </div>
                 
@@ -2724,6 +2855,35 @@ function ParentScreen({
                   {isLoadingQuran ? '...' : t[lang].addAyahs}
                 </button>
               </>
+            )}
+            {isTextSearchOpen && (
+              <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                  <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      {lang === 'ar' ? 'بحث في القرآن' : 'Search Quran'}
+                    </h3>
+                    <button 
+                      onClick={() => setIsTextSearchOpen(false)}
+                      className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-500"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                    <QuranSearchInline
+                      lang={lang}
+                      onSelect={(surahNum, ayahNum, action) => {
+                        setSelectedSurah(surahNum);
+                        setStartAyah(ayahNum);
+                        const surahAction = QURAN_SURAHS.find(s => s.number === surahNum);
+                        setEndAyah(surahAction ? Math.min(ayahNum + 5, surahAction.numberOfAyahs) : ayahNum);
+                        setIsTextSearchOpen(false);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             )}
           </motion.div>
         )}

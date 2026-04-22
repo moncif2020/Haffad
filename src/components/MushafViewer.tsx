@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Info, Download, CheckCircle2, Search, X, Headphones, Play, Loader2, Square } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Download, CheckCircle2, Search, X, Headphones, Play, Loader2, Square, Eye } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import quranMetadata from '../data/quran-metadata.json';
 import { useAudio } from '../AudioContext';
-import { fetchAyahs, getAudioUrl } from '../lib/quran';
+import { fetchAyahs, getAudioUrl, QURAN_SURAHS } from '../lib/quran';
+import { CustomSelect } from './CustomSelect';
+import { QuranSearchInline } from './QuranSearchInline';
 
 interface MushafViewerProps {
   initialPage?: number;
@@ -22,6 +25,8 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedSurah, setSelectedSurah] = useState(1);
   const [selectedAyah, setSelectedAyah] = useState(1);
+  const [isTextSearchOpen, setIsTextSearchOpen] = useState(false);
+  const [focusedAyah, setFocusedAyah] = useState<{surah: number, ayah: number} | null>(null);
 
   const totalPages = 604;
 
@@ -267,6 +272,42 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
     }
   };
 
+  const listenToSurah = async (surahNum: number) => {
+    setIsSearchOpen(false);
+    setIsPageLoading(true);
+    try {
+      const surahData = quranMetadata.find(s => s.number === surahNum);
+      if (!surahData) return;
+
+      // Jump to the first page of the surah
+      const firstPage = surahData.ayahPages[0];
+      setCurrentPage(firstPage);
+
+      const data = await fetchAyahs(surahNum, 1, surahData.numberOfAyahs);
+      const ayahs = data.ayahs;
+
+      const newPlaylist: any[] = [];
+      for (let j = 0; j < rangeRepetitions; j++) {
+        ayahs.forEach((ayah: any) => {
+          for (let i = 0; i < repetitions; i++) {
+            newPlaylist.push({
+              url: getAudioUrl(reciter, surahNum, ayah.numberInSurah),
+              text: ayah.text,
+              surah: surahNum,
+              ayah: ayah.numberInSurah
+            });
+          }
+        });
+      }
+
+      startNewPlaylist(newPlaylist, 0);
+    } catch (e) {
+      console.error("Failed to start surah audio", e);
+    } finally {
+      setIsPageLoading(false);
+    }
+  };
+
   const currentSurahData = quranMetadata.find(s => s.number === selectedSurah);
 
   const { 
@@ -299,15 +340,19 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
 
   const [isPageLoading, setIsPageLoading] = useState(false);
 
-  const listenToPage = async () => {
+  const listenToPage = async (startPage?: number, ayahToFocus?: {surah: number, ayah: number}) => {
     setIsPageLoading(true);
     try {
-      // Find all ayahs on this page
+      const targetPage = startPage !== undefined ? startPage : currentPage;
+      const targetFocus = ayahToFocus !== undefined ? ayahToFocus : focusedAyah;
+
+      // Find all ayahs starting from this page onwards (limit to 50 pages for performance)
       const pageAyahs: {surah: number, ayah: number}[] = [];
+      const endPage = Math.min(targetPage + 50, totalPages);
       
       quranMetadata.forEach(surah => {
-        surah.ayahPages.forEach((page, index) => {
-          if (page === currentPage) {
+        surah.ayahPages.forEach((p, index) => {
+          if (p >= targetPage && p <= endPage) {
             pageAyahs.push({ surah: surah.number, ayah: index + 1 });
           }
         });
@@ -318,21 +363,34 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
         return;
       }
 
+      // Check if we have a focused ayah on this page to start from
+      let startIndex = 0;
+      if (targetFocus) {
+        const foundIndex = pageAyahs.findIndex(a => a.surah === targetFocus.surah && a.ayah === targetFocus.ayah);
+        if (foundIndex !== -1) {
+          startIndex = foundIndex;
+        }
+      }
+
       // Group by surah to fetch text
       const surahsToFetch = Array.from(new Set(pageAyahs.map(a => a.surah)));
-      const allAyahsData: any[] = [];
+      
+      // Fetch all needed surahs in parallel for better performance
+      const surahDataResults = await Promise.all(
+        surahsToFetch.map(async (surahNum) => {
+          const ayahsInSurah = pageAyahs.filter(a => a.surah === surahNum);
+          const minAyah = Math.min(...ayahsInSurah.map(a => a.ayah));
+          const maxAyah = Math.max(...ayahsInSurah.map(a => a.ayah));
+          
+          const data = await fetchAyahs(surahNum, minAyah, maxAyah);
+          return data.ayahs.map((a: any) => ({
+            ...a,
+            surahNum
+          }));
+        })
+      );
 
-      for (const surahNum of surahsToFetch) {
-        const ayahsInSurah = pageAyahs.filter(a => a.surah === surahNum);
-        const minAyah = Math.min(...ayahsInSurah.map(a => a.ayah));
-        const maxAyah = Math.max(...ayahsInSurah.map(a => a.ayah));
-        
-        const data = await fetchAyahs(surahNum, minAyah, maxAyah);
-        allAyahsData.push(...data.ayahs.map((a: any) => ({
-          ...a,
-          surahNum
-        })));
-      }
+      const allAyahsData = surahDataResults.flat();
 
       const newPlaylist: any[] = [];
       for (let j = 0; j < rangeRepetitions; j++) {
@@ -348,7 +406,12 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
         });
       }
 
-      startNewPlaylist(newPlaylist, 0);
+      // Adjust the start index to account for repetitions if necessary
+      // but usually we just want to jump to the first instance
+      const adjustedStartIndex = startIndex * repetitions;
+
+      startNewPlaylist(newPlaylist, adjustedStartIndex);
+      setFocusedAyah(null); // Clear focus after starting
     } catch (e) {
       console.error("Failed to start page audio", e);
     } finally {
@@ -389,13 +452,15 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
               </div>
             )}
             {imageSrc && (
-              <img
-                src={imageSrc}
-                alt={`صفحة ${currentPage} من المصحف`}
-                className="w-full h-full object-contain animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,196,140,0.1)]"
-                dir="rtl"
-                onClick={(e) => e.stopPropagation()}
-              />
+              <>
+                <img
+                  src={imageSrc}
+                  alt={`صفحة ${currentPage} من المصحف`}
+                  className="w-full h-full object-contain animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,196,140,0.1)]"
+                  dir="rtl"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </>
             )}
           </div>
           
@@ -412,61 +477,50 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           </div>
         </div>
       )}
+
       {/* Search Modal */}
       {isSearchOpen && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-200 border dark:border-slate-800">
-            <div className="flex items-center justify-between border-b dark:border-slate-800 pb-3">
-              <h3 className="text-xl font-bold font-arabic text-gray-800 dark:text-white">البحث عن آية</h3>
+        <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-300 border dark:border-slate-800 h-auto max-h-[90vh]">
+            <div className="flex items-center justify-between border-b dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                  <Search size={22} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black font-arabic text-gray-800 dark:text-white leading-tight">
+                    {lang === 'ar' ? 'البحث الذكي' : 'Smart Search'}
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    {lang === 'ar' ? 'سورة، رقم، أو آية' : 'Surah, Number, or Verse'}
+                  </p>
+                </div>
+              </div>
               <button 
                 onClick={() => setIsSearchOpen(false)}
-                className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors focus:ring-2 focus:ring-emerald-500 outline-none"
+                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all outline-none"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="flex flex-col gap-4 mt-2">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-bold text-gray-700 dark:text-slate-300 font-arabic">السورة</label>
-                <select 
-                  value={selectedSurah}
-                  onChange={(e) => {
-                    setSelectedSurah(Number(e.target.value));
-                    setSelectedAyah(1); // Reset ayah when surah changes
-                  }}
-                  className="p-4 border-2 border-gray-100 dark:border-slate-700 rounded-xl font-arabic text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50 dark:bg-slate-800 dark:text-white"
-                >
-                  {quranMetadata.map(surah => (
-                    <option key={surah.number} value={surah.number}>
-                      {surah.number}. {surah.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="flex-1 overflow-hidden h-full">
+              <QuranSearchInline 
+                lang={lang}
+                onSelect={(surahNum, ayahNum, action) => {
+                  const surahMeta = quranMetadata.find(s => s.number === surahNum);
+                  if (surahMeta && surahMeta.ayahPages && surahMeta.ayahPages[ayahNum - 1]) {
+                    const targetPage = surahMeta.ayahPages[ayahNum - 1];
+                    setCurrentPage(targetPage);
+                    setFocusedAyah({ surah: surahNum, ayah: ayahNum });
+                    setIsSearchOpen(false);
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-bold text-gray-700 dark:text-slate-300 font-arabic">الآية</label>
-                <select 
-                  value={selectedAyah}
-                  onChange={(e) => setSelectedAyah(Number(e.target.value))}
-                  className="p-4 border-2 border-gray-100 dark:border-slate-700 rounded-xl font-arabic text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50 dark:bg-slate-800 dark:text-white"
-                >
-                  {Array.from({ length: currentSurahData?.numberOfAyahs || 0 }, (_, i) => i + 1).map(ayah => (
-                    <option key={ayah} value={ayah}>
-                      الآية {ayah}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button 
-                onClick={handleSearch}
-                className="mt-4 w-full bg-emerald-600 text-white font-bold font-arabic py-4 rounded-xl hover:bg-emerald-700 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-2 text-lg shadow-lg shadow-emerald-200 dark:shadow-none"
-              >
-                <Search className="w-6 h-6" />
-                <span>الذهاب للآية</span>
-              </button>
+                    if (action === 'play') {
+                       listenToPage(targetPage, { surah: surahNum, ayah: ayahNum });
+                    }
+                  }
+                }}
+              />
             </div>
           </div>
         </div>
@@ -505,7 +559,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
             onClick={isPlaying ? stopAudio : listenToPage}
             disabled={isPageLoading}
             className={`p-2 sm:p-3 rounded-xl transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${isPageLoading || isAudioLoading || isPlaying ? 'text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
-            title={isPlaying ? "إيقاف الاستماع" : "استماع لهذه الصفحة"}
+            title={isPlaying ? (lang === 'ar' ? "إيقاف الاستماع" : "Stop listening") : (lang === 'ar' ? "الاستماع من هذه الصفحة" : "Listen from this page")}
           >
             {isPageLoading || isAudioLoading ? (
               <Loader2 className="w-6 h-6 sm:w-7 sm:h-7 animate-spin" />
@@ -543,15 +597,17 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           </div>
         )}
         {imageSrc && (
-          <img
-            src={imageSrc}
-            alt={`صفحة ${currentPage} من المصحف`}
-            className="w-full h-full object-contain cursor-pointer transition-transform duration-300 group-hover:scale-[1.01]"
-            onLoad={() => setIsLoading(false)}
-            onError={() => setIsLoading(false)}
-            onClick={() => setIsFullscreen(true)}
-            dir="rtl"
-          />
+          <>
+            <img
+              src={imageSrc}
+              alt={`صفحة ${currentPage} من المصحف`}
+              className="w-full h-full object-contain cursor-pointer transition-transform duration-300 group-hover:scale-[1.01]"
+              onLoad={() => setIsLoading(false)}
+              onError={() => setIsLoading(false)}
+              onClick={() => setIsFullscreen(true)}
+              dir="rtl"
+            />
+          </>
         )}
         
         {/* TV Navigation Hints (Visible on hover or focus) */}

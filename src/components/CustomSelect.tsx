@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 
 interface Option {
   value: string | number;
@@ -11,15 +11,49 @@ interface CustomSelectProps {
   onChange: (value: any) => void;
   options: Option[];
   className?: string;
+  placeholder?: string;
+  lang?: string;
 }
 
-export function CustomSelect({ value, onChange, options, className = '' }: CustomSelectProps) {
+// Simple normalization for search comparison
+const normalizeText = (text: string) => {
+  return text
+    .toLowerCase()
+    .replace(/[\u064B-\u065F]/g, "") // Remove Tashkeel
+    .replace(/\u0640/g, "") // Remove Tatweel
+    .replace(/[أإآٱ]/g, "ا") // Normalize Alef
+    .replace(/ة/g, "ه") // Normalize Ta Marbuta
+    .replace(/[ىي]/g, "ي") // Normalize Yaa/Alif Maksura
+    .trim();
+};
+
+export function CustomSelect({ value, onChange, options, className = '', placeholder = '', lang = 'ar' }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const optionsRef = useRef<(HTMLButtonElement | null)[]>([]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
+    const term = normalizeText(searchTerm);
+    return options.filter(opt => 
+      normalizeText(opt.label).includes(term) || 
+      opt.value.toString().includes(term)
+    );
+  }, [options, searchTerm]);
 
   const selectedOption = options.find(opt => opt.value === value) || options[0];
+
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+    if (!isOpen) {
+      setSearchTerm('');
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -73,6 +107,20 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
       
       {isOpen && (
         <div className="absolute z-[1001] w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
+          {/* Search Input */}
+          <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
+            <Search size={18} className="text-slate-400" />
+            <input 
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={placeholder || (lang === 'ar' ? 'البحث...' : 'Search...')}
+              className="w-full bg-transparent border-none outline-none font-medium text-slate-700 placeholder:text-slate-400"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
           {/* Top Scroll Indicator */}
           <button 
             type="button"
@@ -86,20 +134,26 @@ export function CustomSelect({ value, onChange, options, className = '' }: Custo
             ref={scrollContainerRef}
             className="max-h-[35vh] overflow-y-auto force-scrollbar scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
           >
-            {options.map((option, idx) => (
-              <button
-                key={option.value}
-                ref={el => optionsRef.current[idx] = el}
-                onFocus={() => handleFocus(idx)}
-                className={`w-full text-start p-4 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none transition-colors ${value === option.value ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-700'}`}
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((option, idx) => (
+                <button
+                  key={option.value}
+                  ref={el => optionsRef.current[idx] = el}
+                  onFocus={() => handleFocus(idx)}
+                  className={`w-full text-start p-4 cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none transition-colors ${value === option.value ? 'bg-emerald-100 text-emerald-800 font-bold' : 'text-slate-700'}`}
+                  onClick={() => {
+                    onChange(option.value);
+                    setIsOpen(false);
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))
+            ) : (
+              <div className="p-4 text-center text-slate-400 italic">
+                {lang === 'ar' ? 'لا توجد نتائج' : 'No results'}
+              </div>
+            )}
           </div>
 
           {/* Bottom Scroll Indicator */}

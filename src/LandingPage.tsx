@@ -16,6 +16,7 @@ export function LandingPage() {
   const [lang, setLang] = useState('ar');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
   const [tvSessionId, setTvSessionId] = useState<string | null>(null);
   const [deviceId] = useState<string>(() => {
@@ -57,12 +58,23 @@ export function LandingPage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user && !user.isAnonymous) {
         navigate('/app');
+      } else {
+        setIsAuthChecking(false);
       }
     });
     return () => unsubscribe();
   }, [lang, t, currentLang, navigate]);
 
   const handleStart = async () => {
+    // If we're already checking or loading, ignore
+    if (isLoading || isAuthChecking) return;
+
+    // 1. Check if user is ALREADY logged in before showing a popup
+    if (auth.currentUser && !auth.currentUser.isAnonymous) {
+      navigate('/app');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
@@ -169,6 +181,21 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans" dir={currentLang.dir}>
+      {isAuthChecking && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white">
+          <div className="flex flex-col items-center">
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+              className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full mb-4"
+            />
+            <p className="text-slate-600 font-medium">
+              {lang === 'ar' ? 'جاري التحقق من الهوية...' : 'Verifying identity...'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md z-50 border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
