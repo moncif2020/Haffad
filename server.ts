@@ -6,18 +6,25 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 
 // Initialize Firebase Admin if environment variables are present
-if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+const serviceAccount = {
+  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+  clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+  privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+};
+
+if (serviceAccount.projectId && serviceAccount.clientEmail && serviceAccount.privateKey) {
   try {
     admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      }),
+      credential: admin.credential.cert(serviceAccount as any),
     });
-    console.log('Firebase Admin initialized successfully');
+    console.log('✅ Firebase Admin initialized successfully');
   } catch (error) {
-    console.error('Firebase Admin initialization error:', error);
+    console.error('❌ Firebase Admin initialization error:', error);
+  }
+} else {
+  console.warn('⚠️ Firebase Admin NOT initialized. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.');
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('Production mode: TV Login features will be restricted to Guest mode.');
   }
 }
 

@@ -123,13 +123,35 @@ export function LandingPage() {
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data.status === 'linked') {
-          // Store the session info in localStorage
-          localStorage.setItem('hoffad_session_uid', data.uid);
-          localStorage.setItem('hoffad_session_name', data.displayName || '');
-          localStorage.setItem('hoffad_session_photo', data.photoURL || '');
-          
-          unsubscribe();
-          navigate('/app');
+          // 2. Try to get a custom token from our backend for "real" authentication
+          // This allows the TV to actually BE the user in the eyes of Firestore rules
+          fetch('/api/generate-custom-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: data.uid })
+          })
+          .then(res => {
+            if (!res.ok) throw new Error('Backend failed to generate token');
+            return res.json();
+          })
+          .then(tokenData => {
+            if (tokenData.customToken) {
+              localStorage.setItem('hoffad_custom_token', tokenData.customToken);
+            }
+          })
+          .catch(err => {
+            console.warn("Custom token generation failed. Falling back to simple session.", err);
+            // We still proceed, but Firestore might block reads if rules aren't met
+          })
+          .finally(() => {
+            // Store the session info in localStorage
+            localStorage.setItem('hoffad_session_uid', data.uid);
+            localStorage.setItem('hoffad_session_name', data.displayName || '');
+            localStorage.setItem('hoffad_session_photo', data.photoURL || '');
+            
+            unsubscribe();
+            navigate('/app');
+          });
         }
       }
     }, (error) => {
