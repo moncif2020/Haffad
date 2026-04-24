@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Mic, Video, Check, Loader2, X, AlertCircle, Camera, QrCode } from 'lucide-react';
 import { db, storage, auth, googleProvider } from './firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { signInAnonymously, signInWithPopup, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Html5QrcodeScanner } from 'html5-qrcode';
@@ -102,8 +102,20 @@ export function RemoteUploadPage() {
     try {
       if (!storage) throw new Error("Storage not initialized.");
 
-      // 1. Upload to Firebase Storage with progress
-      const storageRef = ref(storage, `remote_uploads/${user.uid}/${deviceId}/${Date.now()}_${file.name}`);
+      // 1. Fetch TV Session to get the current anonUid
+      const sessionDoc = await getDoc(doc(db, 'tv_sessions', deviceId));
+      if (!sessionDoc.exists()) {
+        throw new Error("Invalid TV Session. Please refresh your TV.");
+      }
+      const sessionData = sessionDoc.data();
+      const anonUid = sessionData.currentAnonUid;
+
+      if (!anonUid) {
+        throw new Error("TV is not ready. Please make sure the QR code is still visible on TV.");
+      }
+
+      // 2. Upload to Firebase Storage with progress (New Path with anonUid)
+      const storageRef = ref(storage, `remote_uploads/${user.uid}/${deviceId}/${anonUid}/${Date.now()}_${file.name}`);
       const uploadTask = uploadBytesResumable(storageRef, file);
 
       uploadTask.on('state_changed', 
@@ -121,9 +133,10 @@ export function RemoteUploadPage() {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
             const fullPath = uploadTask.snapshot.ref.fullPath;
 
-            // 2. Add to Firestore
+            // 3. Add to Firestore including the anonUid for lookup
             await addDoc(collection(db, 'uploads'), {
               deviceId,
+              anonUid,
               userId: user.uid,
               userName: user.displayName,
               type,

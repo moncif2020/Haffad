@@ -35,6 +35,8 @@ export function LandingPage() {
     ...landingTranslations['en'],
     ...(landingTranslations[lang] || landingTranslations['ar'])
   };
+
+  const devError = (...args: any[]) => { if (import.meta.env.DEV) console.error(...args); };
   
   const currentLang = languages.find(l => l.code === lang) || languages[0];
   const isRtl = currentLang.dir === 'rtl';
@@ -80,7 +82,7 @@ export function LandingPage() {
       await signInWithPopup(auth, googleProvider);
       navigate('/app');
     } catch (error: any) {
-      console.error("Login Error:", error);
+      devError("Login Error:", error);
       if (error.code === 'auth/internal-error' || error.code === 'auth/network-request-failed') {
         // If it's a TV or blocked user agent, suggest TV login
         setIsTVModalOpen(true);
@@ -110,7 +112,7 @@ export function LandingPage() {
       const anonResult = await signInAnonymously(auth);
       anonymousUid = anonResult.user.uid;
     } catch (err) {
-      console.error("Anonymous login failed:", err);
+      devError("Anonymous login failed:", err);
       // Fallback is still possible but rules will be stricter
     }
 
@@ -127,7 +129,7 @@ export function LandingPage() {
         createdAt: serverTimestamp()
       });
     } catch (err) {
-      console.error("Failed to initialize TV session:", err);
+      devError("Failed to initialize TV session:", err);
     }
 
     // Listen for the session to be linked
@@ -167,7 +169,7 @@ export function LandingPage() {
         }
       }
     }, (error) => {
-      console.error("TV Session Listener Error:", error);
+      devError("TV Session Listener Error:", error);
       // If error happens here, the TV can't see its own session
       if (error.message.includes('permission')) {
         alert(lang === 'ar' 

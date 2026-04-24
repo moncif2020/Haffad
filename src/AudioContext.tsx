@@ -20,6 +20,9 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
     playlistRef.current = playlist;
   }, [playlist]);
 
+  const devLog = (...args: any[]) => { if (import.meta.env.DEV) console.log(...args); };
+  const devError = (...args: any[]) => { if (import.meta.env.DEV) console.error(...args); };
+
   const playTrack = (index: number) => {
     const currentPlaylist = playlistRef.current;
     if (index >= 0 && index < currentPlaylist.length) {
@@ -35,7 +38,7 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
             setIsLoading(false);
             setIsPlaying(true);
           }).catch(e => {
-            console.error("Initial playback promise failed", e);
+            devError("Initial playback promise failed", e);
             // Error event will handle retry
           });
         }
@@ -89,7 +92,7 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const handleAudioError = (e: any) => {
-    console.error("Audio element error", e);
+    devError("Audio element error", e);
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -99,13 +102,13 @@ export const AudioProvider = ({ children }: { children: React.ReactNode }) => {
       const nextMirrorIndex = retryCount + 1;
       const nextUrl = getAudioUrl(reciter, currentTrack.surah, currentTrack.ayah, nextMirrorIndex);
       
-      console.log(`Retrying playback with mirror ${nextMirrorIndex}: ${nextUrl}`);
+      devLog(`Retrying playback with mirror ${nextMirrorIndex}: ${nextUrl}`);
       setRetryCount(nextMirrorIndex);
       setIsLoading(true);
       
       audio.src = nextUrl;
       audio.load();
-      audio.play().catch(err => console.error("Mirror playback failed", err));
+      audio.play().catch(err => devError("Mirror playback failed", err));
     } else {
       setIsLoading(false);
       setIsPlaying(false);

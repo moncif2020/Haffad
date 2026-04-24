@@ -1,12 +1,15 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /remote_uploads/{userId}/{deviceId}/{allPaths=**} {
-      // Allow authenticated users to upload to their own folder
+    match /remote_uploads/{userId}/{deviceId}/{anonUid}/{allPaths=**} {
+      // الكتابة: المالك فقط
       allow write: if request.auth != null && request.auth.uid == userId;
       
-      // Allow reading if authenticated (for the TV/Desktop to display)
-      allow read: if request.auth != null;
+      // القراءة: المالك أو الجهاز الذي يملك anonUid المذكور في المسار
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || 
+        request.auth.uid == anonUid
+      );
     }
   }
 }

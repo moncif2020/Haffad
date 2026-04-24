@@ -31,14 +31,72 @@ if (serviceAccount.projectId && serviceAccount.clientEmail && serviceAccount.pri
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const rateLimitMap = new Map<string, { 
+  count: number; 
+  resetTime: number 
+}>();
+
+function checkRateLimit(
+  ip: string, 
+  maxRequests: number, 
+  windowMs: number
+): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { 
+      count: 1, 
+      resetTime: now + windowMs 
+    });
+    return true;
+  }
+  if (record.count >= maxRequests) return false;
+  record.count++;
+  return true;
+}
+
+// Clean up old entries every 5 minutes to prevent memory leak
+setInterval(() => {
+  const now = Date.now();
+  rateLimitMap.forEach((value, key) => {
+    if (now > value.resetTime) rateLimitMap.delete(key);
+  });
+}, 5 * 60 * 1000);
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
 
+  // Security Headers Middleware
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN'); 
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    // Content Security Policy
+    res.setHeader('Content-Security-Policy', 
+      "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://www.google-analytics.com; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com; " +
+      "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://*.googleusercontent.com; " +
+      "media-src 'self' blob: https://firebasestorage.googleapis.com https://*.everyayah.com https://everyayah.com https://mirrors.quranicaudio.com https://*.mp3quran.net; " +
+      "connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://www.google-analytics.com https://api.alquran.cloud https://api.quran.com https://*.everyayah.com https://everyayah.com https://mirrors.quranicaudio.com https://*.mp3quran.net; " +
+      "frame-src 'self' https://*.firebaseapp.com https://*.firebaseio.com;"
+    );
+    next();
+  });
+
   // API route to generate a custom token for TV login
   app.post('/api/generate-custom-token', async (req, res) => {
+    const ip = req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(ip, 5, 60000)) {
+      return res.status(429).json({ 
+        error: 'Too many requests. Please wait a minute.' 
+      });
+    }
+
     const { uid } = req.body;
     if (!uid) return res.status(400).send('Missing uid');
 
@@ -58,13 +116,37 @@ async function startServer() {
   // Proxy route to fetch images/audio from Firebase Storage and return as base64
   // This bypasses CORS issues on the client
   app.get('/api/proxy-file', async (req, res) => {
+    const ip = req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(ip, 60, 60000)) {
+      return res.status(429).json({ 
+        error: 'Too many requests. Please wait a minute.' 
+      });
+    }
+
     const fileUrl = req.query.url as string;
     if (!fileUrl) {
       return res.status(400).send('Missing url parameter');
     }
 
+    // SSRF Protection
+    const allowedHost = 'firebasestorage.googleapis.com';
+    let parsedUrl: URL;
+
     try {
-      const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+      parsedUrl = new URL(fileUrl);
+    } catch {
+      return res.status(400).send('Invalid URL format');
+    }
+
+    if (parsedUrl.hostname !== allowedHost || parsedUrl.protocol !== 'https:') {
+      return res.status(403).send('Forbidden: Invalid URL source');
+    }
+
+    try {
+      const response = await axios.get(parsedUrl.toString(), { 
+        responseType: 'arraybuffer',
+        timeout: 10000 // 10 seconds
+      });
       const contentType = response.headers['content-type'];
       const base64 = Buffer.from(response.data, 'binary').toString('base64');
       res.json({ base64, contentType });

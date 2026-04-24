@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/*
+Disallow: /tv-login
+Disallow: /parent-zone
+
+Sitemap: https://hoffad.com/sitemap.xml

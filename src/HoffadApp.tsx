@@ -18,6 +18,15 @@ import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDo
 import { ref, uploadBytes, getDownloadURL, getBlob } from 'firebase/storage';
 import { signInWithPopup, signOut, onAuthStateChanged, User, signInWithCustomToken } from 'firebase/auth';
 
+// --- Logging Helper ---
+const devLog = (...args: any[]) => {
+  if (import.meta.env.DEV) console.log(...args);
+};
+
+const devError = (...args: any[]) => {
+  if (import.meta.env.DEV) console.error(...args);
+};
+
 // --- Types ---
 type View = 'garden' | 'study' | 'parent' | 'game' | 'listen' | 'mushaf' | 'about' | 'upgrade';
 type Lesson = { id: string; title: string; text: string; type?: 'quran' | 'custom'; audioUrl?: string; lang?: string };
@@ -62,7 +71,7 @@ const handleFirestoreError = (error: any, operationType: any, path: string | nul
     authInfo
   };
   
-  console.error("Firestore Error:", errorInfo);
+  devError("Firestore Error:", errorInfo);
   throw new Error(JSON.stringify(errorInfo));
 };
 
@@ -108,42 +117,35 @@ const t: any = new Proxy(translations, {
 const normalizeArabic = (text: string) => {
   if (!text) return '';
   
-  // 1. Unicode Normalization (NFC) to handle different character representations
-  let normalized = text.normalize('NFC');
+  // 1. Unicode Normalization (NFD) to separate characters from marks (diacritics)
+  // 2. Remove all marks (\p{M}) which covers ALL Tashkeel and decorative marks
+  // 3. Normalize back to NFC
+  let normalized = text.normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .normalize('NFC');
 
   return normalized
-    // 2. Remove Tatweel (Kashida)
-    .replace(/\u0640/g, "")
-    // 3. Remove all Tashkeel (diacritics)
-    // Range \u064B-\u065F covers Fathatan, Dammatan, Kasratan, Fatha, Damma, Kasra, Shadda, Sukun, Maddah, Hamza above/below
-    .replace(/[\u064B-\u065F]/g, "")
-    // 4. Remove all Quranic marks, small letters, and stop signs
-    // This covers a wide range: \u0610-\u061A, \u06D6-\u06ED, \u0670 (Superscript Alef)
-    .replace(/[\u0610-\u061A\u06D6-\u06ED\u0670]/g, "") 
-    // 5. Normalize all forms of Alef (including Hamzat Wasl ٱ) to a simple Alef ا
+    // 4. Normalize all forms of Alef (أإآٱ) to simple Alef ا
     .replace(/[أإآٱ]/g, "ا")
-    // 6. Normalize Ta'a Marbuta to Ha'a
+    // 5. Normalize Ta'a Marbuta to Ha'a (common error in STT and typing)
     .replace(/ة/g, "ه")
-    // 7. Normalize Alif Maksura and Yaa to a single form (Yaa)
-    // This is crucial because STT engines often interchange them at the end of words
+    // 6. Normalize Alif Maksura and Yaa to a single form (Yaa)
     .replace(/[ىي]/g, "ي")
-    // 8. Normalize Waw with Hamza to simple Waw
+    // 7. Normalize Waw with Hamza and Yaa with Hamza
     .replace(/ؤ/g, "و")
-    // 9. Normalize Yaa with Hamza to simple Yaa
     .replace(/ئ/g, "ي")
-    // 10. Handle specific Uthmani script spelling variations to match standard spelling
+    // 8. Handle Uthmani spelling variations
     .replace(/صلوه/g, "صلاه")
     .replace(/زكوه/g, "زكاه")
-    .replace(/حيوه/g, "حياه")
     .replace(/ربوا/g, "ربا")
-    // 11. Remove Ayah markers and numbers
-    .replace(/۝/g, "")
-    .replace(/[٠-٩0-9]/g, "") 
-    // 12. Remove any remaining non-Arabic characters (except spaces)
+    // 9. Remove Arabic Punctuation and specific special chars
+    .replace(/[\u060C\u061B\u061F\u06D4۝]/g, "")
+    // 10. Clean up numbers and non-Arabic chars
+    .replace(/[٠-٩0-9]/g, "")
     .replace(/[^\u0600-\u06FF\s]/g, "") 
-    // 13. Clean up extra spaces
-    .replace(/\s+/g, " ")
-    .trim();
+    // 11. Final whitespace cleanup
+    .trim()
+    .replace(/\s+/g, " ");
 };
 
 // --- Reusable Custom Text Input Component ---
@@ -188,7 +190,7 @@ function CustomTextInput({
                    (window as any).GEMINI_API_KEY;
     
     if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey === "null") {
-      console.error("Gemini API Key missing or invalid:", { 
+      devError("Gemini API Key missing or invalid:", { 
         hasKey: !!apiKey, 
         value: apiKey ? "SET" : "EMPTY" 
       });
@@ -196,7 +198,7 @@ function CustomTextInput({
       return;
     }
     
-    console.log("Using API Key starting with:", apiKey.substring(0, 5));
+
 
     setExtractingType(type);
     setStatus(lang.startsWith('ar') ? "جاري معالجة الملف واستخراج النص..." : "Processing file and extracting text...");
@@ -237,7 +239,7 @@ function CustomTextInput({
         throw new Error("لم يتم العثور على نص.");
       }
     } catch (error: any) {
-      console.error("Extraction Error:", error);
+      devError("Extraction Error:", error);
       setStatus(lang.startsWith('ar') ? "فشل استخراج النص." : "Failed to extract text.");
       alert(lang.startsWith('ar') ? `حدث خطأ أثناء استخراج النص: ${error?.message || error}` : `Error during extraction: ${error?.message || error}`);
     } finally {
@@ -445,7 +447,7 @@ function ListenScreen({ lang }: { lang: Language }) {
 
         startNewPlaylist(newPlaylist, 0);
       } catch (err) {
-        console.error(err);
+        devError(err);
         alert(t[lang].errorFetchingAyahs);
         setIsLoading(false);
       }
@@ -1068,20 +1070,16 @@ export default function App() {
     if (!deviceId) return;
     
     // Construct query based on authentication state
-    // If not logged in (TV mode initial), we listen by deviceId only (allowed by rules)
-    // If logged in, we add the userId filter which is REQUIRED by rules for auth users
+    // We strictly use anonUid which matches auth.currentUser.uid in TV mode
     let q;
     if (auth.currentUser) {
       q = query(
         collection(db, 'uploads'), 
-        where('deviceId', '==', deviceId),
-        where('userId', '==', auth.currentUser.uid)
+        where('anonUid', '==', auth.currentUser.uid)
       );
     } else {
-      q = query(
-        collection(db, 'uploads'), 
-        where('deviceId', '==', deviceId)
-      );
+      // Should not happen as TV login secures it, but for safety:
+      return;
     }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1170,9 +1168,9 @@ export default function App() {
     if ('wakeLock' in navigator && !wakeLockRef.current) {
       try {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        console.log('Wake Lock Acquired');
+        devLog('Wake Lock Acquired');
         wakeLockRef.current.addEventListener('release', () => {
-          console.log('Wake Lock Released');
+          devLog('Wake Lock Released');
           wakeLockRef.current = null;
         });
       } catch (err: any) {
@@ -2105,7 +2103,7 @@ function BlanksGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
   };
 
   const checkAnswer = () => {
-    const correct = words.every(w => !w.isHidden || filledBlanks[w.id] === w.word);
+    const correct = words.every(w => !w.isHidden || normalizeArabic(filledBlanks[w.id] || '') === normalizeArabic(w.word));
     if (correct) onSuccess();
     else alert(t[lang].someErrorsTryAgain);
   };
@@ -2186,7 +2184,7 @@ function OrderGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: () 
 
   const checkAnswer = () => {
     const currentText = selected.map(c => c.text).join(' ');
-    if (currentText === lesson.text) onSuccess();
+    if (normalizeArabic(currentText) === normalizeArabic(lesson.text)) onSuccess();
     else alert(t[lang].incorrectOrderTryAgain);
   };
 
@@ -2243,7 +2241,7 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
   const [transcript, setTranscript] = useState('');
   const [writeText, setWriteText] = useState('');
   const [isSelfRevealed, setIsSelfRevealed] = useState(false);
-  const [result, setResult] = useState<{ score: number, matchedWords: boolean[], originalWords: string[], mistakes?: string[] } | null>(null);
+  const [result, setResult] = useState<{ score: number, matchedWords: boolean[], originalWords: string[], mistakes?: string[], pronouncedWords?: {word: string, isCorrect: boolean, isSwapped: boolean}[] } | null>(null);
   const [error, setError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -2337,7 +2335,7 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       try {
         recognitionRef.current?.start();
       } catch (e) {
-        console.error(e);
+        devError(e);
       }
     }
   };
@@ -2467,6 +2465,44 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       const score = maxDistance === 0 ? 100 : Math.max(0, Math.round(((maxDistance - distance) / maxDistance) * 100));
       
       setResult({ score, matchedWords, originalWords, mistakes });
+
+      // --- VERSE SWAP DETECTION & AS-PRONOUNCED SEOUENCE ---
+      const isQuran = lesson.type === 'quran' || lesson.text.includes('۝');
+      if (isQuran) {
+        const versesList = lesson.text.split('۝').map(v => v.trim()).filter(v => v);
+        const transcriptNorm = normalizeArabic(textToCheck);
+        
+        const foundVerses = versesList.map((vStr, vIdx) => {
+          const vNorm = normalizeArabic(vStr);
+          const pos = transcriptNorm.indexOf(vNorm);
+          return { vIdx, pos, text: vStr };
+        }).filter(v => v.pos !== -1).sort((a, b) => a.pos - b.pos);
+
+        const verseSwaps: string[] = [];
+        let hasInversion = false;
+        for (let k = 0; k < foundVerses.length - 1; k++) {
+          if (foundVerses[k].vIdx > foundVerses[k + 1].vIdx) {
+            hasInversion = true;
+            const firstVerseNum = foundVerses[k].vIdx + 1;
+            const secondVerseNum = foundVerses[k + 1].vIdx + 1;
+            verseSwaps.push(t[lang].verseSwap.replace('{first}', String(firstVerseNum)).replace('{second}', String(secondVerseNum)));
+          }
+        }
+
+        if (hasInversion) {
+          const pronouncedWords: {word: string, isCorrect: boolean, isSwapped: boolean}[] = [];
+          foundVerses.forEach((fv, idx) => {
+            const vWords = fv.text.split(/\s+/).filter(w => w.trim());
+            // Check if this verse is out of its natural order
+            const isSwapped = fv.vIdx !== idx; 
+            vWords.forEach(w => {
+              pronouncedWords.push({ word: w, isCorrect: true, isSwapped });
+            });
+          });
+          
+          setResult(prev => prev ? { ...prev, mistakes: [...(prev.mistakes || []), ...verseSwaps], pronouncedWords } : null);
+        }
+      }
     } catch (e: any) {
       console.error("Analysis error:", e);
       setError(t[lang].errorAnalyzingRecitation || "Error analyzing recitation. Please try again.");
@@ -2594,11 +2630,19 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
                   </div>
                 </div>
                 <div className="space-y-4">
-                   {result.originalWords.map((word, index) => (
-                    <span key={index} className={`inline-block mx-1 px-1 rounded transition-colors ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300 decoration-2'}`}>
-                      {word}
-                    </span>
-                  ))}
+                   {result.pronouncedWords ? (
+                     result.pronouncedWords.map((wordObj, index) => (
+                       <span key={index} className={`inline-block mx-1 px-1 rounded transition-colors ${wordObj.isSwapped ? 'text-red-500 bg-red-50 underline decoration-red-300 decoration-2' : 'text-green-600 bg-green-50'}`}>
+                         {wordObj.word}
+                       </span>
+                     ))
+                   ) : (
+                     result.originalWords.map((word, index) => (
+                       <span key={index} className={`inline-block mx-1 px-1 rounded transition-colors ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300 decoration-2'}`}>
+                         {word}
+                       </span>
+                     ))
+                   )}
                 </div>
               </div>
 

@@ -1,20 +1,65 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# مشروع حفاظ (Hoffad)
 
-# Run and deploy your AI Studio app
+تطبيق لتعلم وحفظ القرآن الكريم باستخدام تقنيات الذكاء الاصطناعي.
 
-This contains everything you need to run your app locally.
+## طريقة التثبيت (Installation)
 
-View your app in AI Studio: https://ai.studio/apps/3358a67e-2eb3-4036-8e2c-18c625f57ae5
+1. قم بتحميل الكود المصدري للمشروع.
+2. تأكد من وجود Node.js مثبت على جهازك.
+3. قم بتثبيت المكتبات المطلوبة:
+   ```bash
+   npm install
+   ```
 
-## Run Locally
+## متغيرات البيئة المطلوبة (Environment Variables)
 
-**Prerequisites:**  Node.js
+يجب إنشاء ملف باسم `.env` في المجلد الرئيسي للمشروع وإضافة القيم التالية:
 
+### إعدادات Firebase (Front-end)
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_DATABASE_ID`
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### إعدادات Gemini AI
+- `GEMINI_API_KEY`: لاستخدامه في الخادم (Backend).
+- `VITE_GEMINI_API_KEY`: لاستخدامه في واجهة المستخدم (Optional).
+
+### إعدادات Firebase Admin (للدخول عبر التلفاز)
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PRIVATE_KEY`
+
+## تشغيل المشروع محلياً
+
+لتشغيل التطبيق في بيئة التطوير:
+```bash
+npm run dev
+```
+
+## خطوات النشر على hoffad.com (Deployment)
+
+1. **بناء المشروع**:
+   قم بتشغيل الأمر التالي لإنشاء نسخة الإنتاج:
+   ```bash
+   npm run build
+   ```
+   سيتم إنشاء مجلد باسم `dist` يحتوي على ملفات المشروع الجاهزة للنشر.
+
+2. **رفع الملفات**:
+   قم برفع محتويات مجلد `dist` إلى المجلد الرئيسي على خادم `hoffad.com`.
+
+3. **إعداد الخادم (Server Configuration)**:
+   - تأكد من توجه جميع المسارات (Routes) إلى ملف `index.html` لدعم React Router.
+   - إذا كنت تستخدم Nginx، استخدم الإعداد التالي:
+     ```nginx
+     location / {
+         try_files $uri $uri/ /index.html;
+     }
+     ```
+
+4. **SSL**:
+   تأكد من تفعيل شهادة SSL (HTTPS) لضمان عمل الميكروفون والميزات الأخرى بشكل صحيح.

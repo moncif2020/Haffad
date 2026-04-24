@@ -1,38 +1,11 @@
-// ===============================================================
-// Assumed Data Model
-// ===============================================================
-//
-// Collection: uploads
-// Document ID: auto-generated
-// Fields:
-//   - deviceId: string (required) - The target TV device ID
-//   - type: string (required, enum: ['image', 'audio', 'video'])
-//   - url: string (required, format: uri)
-//   - name: string (optional)
-//   - createdAt: timestamp (required)
-//   - status: string (optional, enum: ['pending', 'completed'])
-//
-// Collection: pairings
-// Document ID: deviceId
-// Fields:
-//   - deviceId: string (required)
-//   - lastActive: timestamp (required)
-//
-// ===============================================================
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // 🔒 Default Deny: الرفض الافتراضي لأي محاولة وصول غير مصرح بها.
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // ═══════════════════════════════════════
-    // Helper Functions (دوال المساعدة)
-    // ═══════════════════════════════════════
-    
     function isSignedIn() {
       return request.auth != null;
     }
@@ -64,8 +37,9 @@ service cloud.firestore {
     }
 
     function isValidRemoteUpload(data) {
-      return data.keys().hasAll(['deviceId', 'type', 'url', 'createdAt', 'userId']) &&
+      return data.keys().hasAll(['deviceId', 'anonUid', 'type', 'url', 'createdAt', 'userId']) &&
              isValidId(data.deviceId) &&
+             isValidId(data.anonUid) &&
              data.type in ['image', 'audio', 'video'] &&
              isValidUrl(data.url) &&
              data.userId is string &&
@@ -83,10 +57,6 @@ service cloud.firestore {
              (data.get('currentAnonUid', '') is string);
     }
 
-    // ═══════════════════════════════════════
-    // Users Collection (مجموعة المستخدمين)
-    // ═══════════════════════════════════════
-    
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
@@ -98,7 +68,6 @@ service cloud.firestore {
                        request.resource.data.donations is number;
       
       allow update: if isOwner(userId) &&
-                       // السماح بالتحديث الأولي للبيانات أو التحديثات اللاحقة
                        (
                          !resource.data.keys().hasAll(['xp', 'coins', 'donations']) ||
                          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAt'])
@@ -106,40 +75,31 @@ service cloud.firestore {
       
       allow delete: if isOwner(userId);
 
-      // 📚 Lessons Sub-Collection
       match /lessons/{lessonId} {
         allow read, write: if isOwner(userId);
       }
     }
 
-    // ═══════════════════════════════════════
-    // Remote Uploads Collection (المرفوعات عن بعد)
-    // ═══════════════════════════════════════
-    
     match /uploads/{uploadId} {
-      // السماح بالقراءة للصاحب أو إذا كان الجهاز يحمل الـ id الصحيح (للعرض على التلفاز)
-      allow get: if isValidId(uploadId) && (
-        (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.get('deviceId', '') != '')) ||
-        (resource.data.get('deviceId', '') != '')
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.get('anonUid', '') == request.auth.uid
       );
       
-      allow list: if (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.get('deviceId', '') != '')) ||
-                     (resource.data.get('deviceId', '') != '');
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.get('anonUid', '') == request.auth.uid
+      );
 
       allow create: if isSignedIn() && 
                        isValidRemoteUpload(request.resource.data) &&
                        request.resource.data.userId == request.auth.uid;
       
-      allow delete: if (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.get('deviceId', '') != '')) ||
-                       (resource.data.get('deviceId', '') != '');
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
       
       allow update: if false;
     }
 
-    // ═══════════════════════════════════════
-    // TV Sessions Collection (Pairing - ربط الأجهزة)
-    // ═══════════════════════════════════════
-    
     match /tv_sessions/{sessionId} {
       allow get: if isValidId(sessionId) && (
         resource == null ||
@@ -150,11 +110,9 @@ service cloud.firestore {
       
       allow list: if false;
 
-      // إنشاء الجلسة من قبل التلفاز
       allow create: if isValidTVSession(request.resource.data) && 
                        request.resource.data.status == 'waiting';
       
-      // المستخدم يربط الجلسة بهويته
       allow update: if isSignedIn() &&
                        isValidProfileData(request.resource.data) &&
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'displayName', 'photoURL', 'status', 'email', 'linkedAt']) &&
@@ -166,30 +124,19 @@ service cloud.firestore {
                        resource.data.uid == request.auth.uid;
     }
 
-    // ═══════════════════════════════════════
-    // Pairings Collection (الأجهزة المرتبطة)
-    // ═══════════════════════════════════════
-    
     match /pairings/{deviceId} {
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      
-      allow list: if isSignedIn() && 
-                     resource.data.userId == request.auth.uid;
+      allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
                        isValidId(deviceId) &&
-                       request.resource.data.keys().hasAll(['userId', 'deviceId', 'lastActive']) &&
                        request.resource.data.userId == request.auth.uid &&
-                       request.resource.data.deviceId == deviceId &&
-                       request.resource.data.lastActive is timestamp;
+                       request.resource.data.deviceId == deviceId;
       
       allow update: if isSignedIn() &&
                        resource.data.userId == request.auth.uid &&
-                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'deviceId']) &&
-                       request.resource.data.lastActive is timestamp;
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'deviceId']);
       
-      allow delete: if isSignedIn() && 
-                       resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
   }
 }

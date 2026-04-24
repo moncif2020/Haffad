@@ -222,12 +222,23 @@ let isFetchingIndex = false;
 // Helper to normalize Arabic text (remove Tashkeel and unify letters)
 export const normalizeArabic = (text: string): string => {
   if (!text) return "";
-  return text
-    .replace(/[\u064B-\u0652]/g, "") // Remove Tashkeel (diacritics)
-    .replace(/[إأآا]/g, "ا")       // Unify Alef forms
-    .replace(/[ىي]/g, "ي")         // Unify Yaa and Alef Maksura
-    .replace(/ة/g, "ه")           // Unify Taa Marbuta
-    .trim();
+  
+  // Robust Arabic normalization:
+  // 1. NFD separates characters from marks
+  // 2. \p{M} removes ALL diacritics/decoration marks
+  // 3. NFC brings it back to standard form
+  return text.normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .normalize('NFC')
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/[ىي]/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[\u060C\u061B\u061F\u06D4۝]/g, "")
+    .replace(/[٠-٩0-9]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
 };
 
 export const searchAyah = async (keyword: string) => {

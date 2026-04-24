@@ -12,20 +12,59 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: 'auto',
-        manifest: {
-          name: 'تطبيقي',
-          short_name: 'تطبيقي',
-          description: 'تطبيق تعليمي',
-          theme_color: '#10b981',
-          icons: [
+        includeAssets: ['logo.svg', 'robots.txt', 'manifest.json', 'icon.png', 'icon-512.png'],
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          runtimeCaching: [
             {
-              src: 'https://cdn-icons-png.flaticon.com/512/3048/3048122.png',
-              sizes: '512x512',
-              type: 'image/png'
-            }
-          ]
-        }
+              urlPattern: ({ url }) => {
+                return url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
+              },
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+                },
+              },
+            },
+            {
+              urlPattern: ({ url }) => {
+                return (
+                  url.hostname.includes('everyayah.com') ||
+                  url.hostname.includes('mp3quran.net') ||
+                  url.hostname.includes('islamic.network') ||
+                  url.hostname.includes('quranicaudio.com')
+                );
+              },
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'quran-audio',
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: ({ url }) => {
+                return url.hostname === 'api.alquran.cloud' || url.hostname === 'api.quran.com';
+              },
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'quran-api',
+                expiration: {
+                  maxEntries: 100,
+                  maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+                },
+              },
+            },
+          ],
+        },
       })
     ],
     define: {
