@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Loader2, BookOpen, Play, ArrowRight, ArrowLeft, Eye } from 'lucide-react';
-import { searchAyah, QURAN_SURAHS, normalizeArabic, getAudioUrl } from '../lib/quran';
+import { searchInQuran, QURAN_SURAHS, normalizeArabic, getAudioUrl } from '../lib/quran';
 import { useAudio } from '../AudioContext';
 
 interface SearchResult {
@@ -71,17 +71,17 @@ export function QuranSearchInline({ onSelect, onBack, lang, autoFocus = true }: 
 
         // 2. Search Ayahs (API) - only if not just a number
         if (!isNumeric && trimmedQuery.length >= 2) {
-          const ayahMatches = await searchAyah(trimmedQuery);
+          const ayahMatches = await searchInQuran(trimmedQuery);
           // Limit total displayed to manage UI, but keep count accurate
           setAyahMatchesCount(ayahMatches.length);
           
           const formattedAyahResults = ayahMatches.map(m => ({
             type: 'ayah' as const,
             text: m.text,
-            surahNumber: m.surahNumber,
+            surahNumber: m.surahNum,
             surahName: m.surahName,
             englishSurahName: m.englishSurahName,
-            ayahNumber: m.ayahNumber
+            ayahNumber: m.ayahNum
           }));
           
           unifiedResults = [...unifiedResults, ...formattedAyahResults];

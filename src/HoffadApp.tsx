@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, ChevronUp, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera, Search } from 'lucide-react';
-import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl } from './lib/quran';
+import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl, isRangeDownloaded } from './lib/quran';
 import { MushafViewer } from './components/MushafViewer';
 import { CustomSelect } from './components/CustomSelect';
 import { QuranSearchInline } from './components/QuranSearchInline';
@@ -117,35 +117,57 @@ const t: any = new Proxy(translations, {
 const normalizeArabic = (text: string) => {
   if (!text) return '';
   
-  // 1. Unicode Normalization (NFD) to separate characters from marks (diacritics)
-  // 2. Remove all marks (\p{M}) which covers ALL Tashkeel and decorative marks
-  // 3. Normalize back to NFC
-  let normalized = text.normalize('NFD')
+  // 1. Remove all Quranic marks, diacritics, and small Uthmani letters
+  // This covers: Harakat, Superscript Alif (\u0670), Small Signs (\u06D6-\u06ED), 
+  // Small Waw (\u06E5), Small Yaa (\u06E6), and Maddah marks.
+  let normalized = text
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, "") // Added \u0640 (Kashida)
+    
+  // 2. Unicode Normalization (NFD) + Strip remaining marks (\p{M})
+  normalized = normalized.normalize('NFD')
     .replace(/\p{M}/gu, '')
-    .normalize('NFC');
-
+    .normalize('NFC')
+    
+  // 3. Unify skeletal letters to their simplest forms
   return normalized
-    // 4. Normalize all forms of Alef (أإآٱ) to simple Alef ا
-    .replace(/[أإآٱ]/g, "ا")
-    // 5. Normalize Ta'a Marbuta to Ha'a (common error in STT and typing)
+    .replace(/[أإآٱء]/g, "ا") // Unify all Alif forms and Hamzas
     .replace(/ة/g, "ه")
-    // 6. Normalize Alif Maksura and Yaa to a single form (Yaa)
     .replace(/[ىي]/g, "ي")
-    // 7. Normalize Waw with Hamza and Yaa with Hamza
     .replace(/ؤ/g, "و")
     .replace(/ئ/g, "ي")
-    // 8. Handle Uthmani spelling variations
+    // 4. Handle Uthmani-specific skeletal spelling variants
     .replace(/صلوه/g, "صلاه")
     .replace(/زكوه/g, "زكاه")
+    .replace(/حيوة/g, "حياه")
+    .replace(/نجوة/g, "نجاه")
     .replace(/ربوا/g, "ربا")
-    // 9. Remove Arabic Punctuation and specific special chars
-    .replace(/[\u060C\u061B\u061F\u06D4۝]/g, "")
-    // 10. Clean up numbers and non-Arabic chars
-    .replace(/[٠-٩0-9]/g, "")
+    // 5. Final cleanup of any non-Arabic artifacts
     .replace(/[^\u0600-\u06FF\s]/g, "") 
-    // 11. Final whitespace cleanup
     .trim()
     .replace(/\s+/g, " ");
+};
+
+// Levenshtein distance for fuzzy matching
+const getLevenshteinDistance = (a: string, b: string): number => {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = Array.from({ length: b.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
 };
 
 // --- Reusable Custom Text Input Component ---
@@ -158,6 +180,7 @@ function CustomTextInput({
   actionLabel, 
   actionIcon,
   lang,
+  setLang,
   isParentMode = false
 }: { 
   text: string, 
@@ -168,6 +191,7 @@ function CustomTextInput({
   actionLabel: string,
   actionIcon: React.ReactNode,
   lang: Language,
+  setLang?: (l: Language) => void,
   isParentMode?: boolean
 }) {
   const [extractingType, setExtractingType] = useState<'image' | 'audio' | 'video' | null>(null);
@@ -306,22 +330,22 @@ function CustomTextInput({
         <p className="text-xs text-slate-400 mt-2">{translations[lang]?.textTip || translations['en']?.textTip}</p>
       </div>
 
-      <div>
-        <label className="block text-sm font-bold text-slate-700 mb-2">{translations[lang]?.textLanguage || translations['en']?.textLanguage}</label>
-        <div className="relative">
-          <Languages className="absolute right-4 top-4 text-slate-400" size={20} />
-          <select 
+
+      {!isParentMode && (
+        <div className="mt-4">
+          <label className="block text-sm font-bold text-slate-700 mb-2">{translations[lang]?.textLanguage || translations['en']?.textLanguage}</label>
+          <CustomSelect 
             value={customLang} 
-            onChange={e => setCustomLang(e.target.value)}
-            className="w-full p-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium"
-          >
-            <option value="ar-SA">{translations[lang]?.arabic || translations['en']?.arabic}</option>
-            <option value="en-US">{translations[lang]?.english || translations['en']?.english}</option>
-            <option value="fr-FR">{translations[lang]?.french || translations['en']?.french}</option>
-            <option value="es-ES">{translations[lang]?.spanish || translations['en']?.spanish}</option>
-          </select>
+            onChange={(val) => {
+              setCustomLang(val);
+              if (setLang) setLang(val);
+            }}
+            options={APP_LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
+            lang={lang}
+            placeholder={translations[lang]?.searchPlaceholder || '...'}
+          />
         </div>
-      </div>
+      )}
 
       <button 
         onClick={onAction}
@@ -362,10 +386,18 @@ function ListenScreen({ lang }: { lang: Language }) {
   const [customRangeReps, setCustomRangeReps] = useState<number>(1);
   const [customPlaylist, setCustomPlaylist] = useState<string[]>([]);
   const [customCurrentIndex, setCustomCurrentIndex] = useState<number>(-1);
+  const [isCurrentRangeDownloaded, setIsCurrentRangeDownloaded] = useState(false);
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isTextSearchOpen, setIsTextSearchOpen] = useState(false);
+
+  // Check if current range is already downloaded
+  useEffect(() => {
+    if (listenMode === 'quran') {
+      isRangeDownloaded(selectedSurah, fromAyah, toAyah, reciter).then(setIsCurrentRangeDownloaded);
+    }
+  }, [selectedSurah, fromAyah, toAyah, reciter, listenMode]);
 
   const RECITERS = [
     { id: 'Husary_64kbps', name: 'محمود خليل الحصري (معلم)' },
@@ -401,12 +433,14 @@ function ListenScreen({ lang }: { lang: Language }) {
   const maxAyahs = selectedSurahData ? selectedSurahData.numberOfAyahs : 1;
 
   const handleDownload = async () => {
+    setIsCurrentRangeDownloaded(true);
     setIsDownloading(true);
     setDownloadProgress(0);
     try {
       await downloadSurahAudio(selectedSurah, fromAyah, toAyah, reciter, (progress) => {
         setDownloadProgress(progress);
       });
+      setIsCurrentRangeDownloaded(true);
       alert(t[lang].downloadComplete);
     } catch (err) {
       console.error(err);
@@ -647,40 +681,19 @@ function ListenScreen({ lang }: { lang: Language }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="space-y-6">
                 <button
+                  type="button"
                   onClick={() => setIsTextSearchOpen(true)}
-                  className="w-full flex items-center justify-center gap-3 p-5 rounded-2xl font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all border border-emerald-100 text-lg"
+                  className="w-full bg-emerald-50/30 border-2 border-emerald-100/50 rounded-2xl py-4 px-6 text-right flex items-center justify-between hover:border-emerald-300 transition-all focus:border-emerald-500 outline-none shadow-sm group"
+                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
                 >
-                  <Search size={22} />
-                  <span>{lang === 'ar' ? 'البحث بنص الآية' : 'Search by Verse Text'}</span>
-                </button>
-
-                <div className="relative py-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-slate-100"></span>
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-4 text-slate-400 font-bold">
-                      {lang === 'ar' ? 'أو اختر السورة والآية' : 'Or choose Surah & Ayah'}
+                  <div className="flex items-center gap-3">
+                    <Search className="text-emerald-500 group-hover:scale-110 transition-transform" size={24} />
+                    <span className={`font-bold text-lg sm:text-xl ${selectedSurah ? 'text-slate-700' : 'text-slate-400'}`}>
+                      {selectedSurah ? surahs.find(s => s.number === selectedSurah)?.name : t[lang].ayahSearchPlaceholder}
                     </span>
                   </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-base font-bold text-slate-700 mb-3">{t[lang].chooseSurah}</label>
-                    <CustomSelect 
-                      value={selectedSurah} 
-                      onChange={(val) => handleSurahChange({ target: { value: val } } as any)}
-                      options={surahs.map(s => ({ 
-                        value: s.number, 
-                        label: lang === 'ar' 
-                          ? `${s.number}. ${s.name}`
-                          : `${s.number}. ${s.englishName} (${s.name})`
-                      }))}
-                      lang={lang}
-                      placeholder={lang === 'ar' ? 'ابحث باسم السورة أو رقمها...' : 'Search by surah name or number...'}
-                    />
-                  </div>
+                  <ChevronDown className="text-emerald-300" size={24} />
+                </button>
 
                   <div className="flex gap-4 sm:gap-6">
                     <div className="flex-1">
@@ -701,7 +714,6 @@ function ListenScreen({ lang }: { lang: Language }) {
                     </div>
                   </div>
                 </div>
-              </div>
 
               <div className="space-y-6">
                 <div>
@@ -748,23 +760,25 @@ function ListenScreen({ lang }: { lang: Language }) {
                 {isLoading ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" size={24} />}
                 <span>{t[lang].startListening}</span>
               </button>
-              <button 
-                onClick={handleDownload}
-                disabled={isDownloading || isLoading}
-                className="flex-1 bg-slate-100 text-slate-700 font-bold py-5 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-3 hover:bg-slate-200 focus:ring-4 focus:ring-slate-300 outline-none transition-all text-xl"
-              >
-                {isDownloading ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    {t[lang].downloading.replace('{progress}', String(downloadProgress))}
-                  </>
-                ) : (
-                  <>
-                    <Download size={24} />
-                    {t[lang].downloadOffline}
-                  </>
-                )}
-              </button>
+              {(!isCurrentRangeDownloaded || isDownloading) && (
+                <button 
+                  onClick={handleDownload}
+                  disabled={isDownloading || isLoading}
+                  className="flex-1 bg-slate-100 text-slate-700 font-bold py-5 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-3 hover:bg-slate-200 focus:ring-4 focus:ring-slate-300 outline-none transition-all text-xl"
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="animate-spin" />
+                      {t[lang].downloading.replace('{progress}', String(downloadProgress))}
+                    </>
+                  ) : (
+                    <>
+                      <Download size={24} />
+                      {t[lang].downloadOffline}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
             {isTextSearchOpen && (
               <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
@@ -988,7 +1002,11 @@ export default function App() {
   // Parent Dashboard Lifted State
   const [parentNewTitle, setParentNewTitle] = useState('');
   const [parentNewText, setParentNewText] = useState('');
-  const [parentCustomLang, setParentCustomLang] = useState<string>('ar-SA');
+  const [parentCustomLang, setParentCustomLang] = useState<string>('ar');
+  
+  useEffect(() => {
+    setParentCustomLang(lang);
+  }, [lang]);
   const [isExtractingRemote, setIsExtractingRemote] = useState(false);
 
   const navigate = useNavigate();
@@ -1394,7 +1412,7 @@ export default function App() {
       <header className="bg-white px-2 sm:px-6 py-2 sm:py-4 flex justify-between items-center sticky top-0 z-[100] transition-colors duration-300 border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-1 sm:gap-4 flex-1 min-w-0">
           <button 
-            onClick={() => setIsSidebarOpen(true)}
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="bg-[#00c48c] text-white p-2 sm:p-3 rounded-[12px] sm:rounded-[16px] shadow-sm hover:bg-[#00b07d] transition-colors focus:ring-4 focus:ring-emerald-300 outline-none shrink-0"
           >
             <Menu size={22} className="sm:size-6" />
@@ -1468,7 +1486,7 @@ export default function App() {
           <div className="flex items-center gap-1 sm:gap-2">
             {user ? (
               <button 
-                onClick={() => setIsSidebarOpen(true)}
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="flex items-center gap-1 sm:gap-3 hover:opacity-80 transition-opacity focus:outline-none"
               >
                 <div className="hidden md:flex flex-col items-end">
@@ -2103,7 +2121,14 @@ function BlanksGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
   };
 
   const checkAnswer = () => {
-    const correct = words.every(w => !w.isHidden || normalizeArabic(filledBlanks[w.id] || '') === normalizeArabic(w.word));
+    // Check if the current filled blank matches the word
+    const isBlankCorrect = (blankText: string, wordText: string) => {
+      const norm1 = normalizeArabic(blankText || '');
+      const norm2 = normalizeArabic(wordText);
+      return norm1 === norm2 || norm1.replace(/ا/g, '') === norm2.replace(/ا/g, '');
+    };
+
+    const correct = words.every(w => !w.isHidden || isBlankCorrect(filledBlanks[w.id], w.word));
     if (correct) onSuccess();
     else alert(t[lang].someErrorsTryAgain);
   };
@@ -2255,7 +2280,20 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const rec = new SpeechRecognition();
-      rec.lang = lang.includes('-') ? lang : (lang === 'ar' ? 'ar-SA' : lang === 'fr' ? 'fr-FR' : lang === 'es' ? 'es-ES' : 'en-US');
+      
+      // Determine recognition language: prioritize lesson language if it's a custom text, else use app lang
+      const recognitionLang = lesson.lang || lang;
+      rec.lang = recognitionLang.includes('-') ? recognitionLang : 
+                (recognitionLang === 'ar' ? 'ar-SA' : 
+                 recognitionLang === 'fr' ? 'fr-FR' : 
+                 recognitionLang === 'es' ? 'es-ES' : 
+                 recognitionLang === 'zh' ? 'zh-CN' :
+                 recognitionLang === 'hi' ? 'hi-IN' :
+                 recognitionLang === 'tr' ? 'tr-TR' :
+                 recognitionLang === 'ru' ? 'ru-RU' :
+                 recognitionLang === 'id' ? 'id-ID' :
+                 'en-US');
+      
       rec.continuous = true;
       rec.interimResults = true;
 
@@ -2316,7 +2354,7 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
     } else {
       if (subMode === 'voice') setError(t[lang].speechNotSupported);
     }
-  }, [lang, subMode]);
+  }, [lang, subMode, lesson]);
 
   const toggleRecording = () => {
     if (isRecordingRef.current) {
@@ -2347,17 +2385,56 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       recognitionRef.current?.stop();
     }
 
-    const originalWords = lesson.text.split(/\s+/).filter(w => w.trim() !== '' && w !== '۝');
+    const originalWords = lesson.text.split(/\s+/)
+      .filter(w => {
+        const norm = normalizeArabic(w);
+        // Only keep words that have actual letters after normalization
+        // This effectively removes isolated punctuation marks, Quranic signs, and verse markers
+        return norm.length > 0;
+      });
+    
+    // --- PRE-PROCESS TRANSCRIPT ---
+    // STT often separates the "Waw" prefix (e.g., "و الأرض" instead of "والأرض")
+    const rawTranscriptWords = textToCheck.split(/\s+/).filter(w => w.trim() !== '');
+    const processedTranscript: string[] = [];
+    for (let i = 0; i < rawTranscriptWords.length; i++) {
+      const current = rawTranscriptWords[i];
+      if (current === "و" && i < rawTranscriptWords.length - 1) {
+        processedTranscript.push("و" + rawTranscriptWords[i + 1]);
+        i++; // Skip next word as it's merged
+      } else {
+        processedTranscript.push(current);
+      }
+    }
+
     const normalizedOriginal = originalWords.map(w => normalizeArabic(w));
-    const normalizedTranscript = normalizeArabic(textToCheck).split(/\s+/).filter(w => w);
+    const normalizedTranscript = processedTranscript.map(w => normalizeArabic(w));
 
     if (normalizedTranscript.length === 0) {
        setError(t[lang].didNotHear);
+       setIsAnalyzing(false);
        return;
     }
 
     setIsAnalyzing(true);
     setError('');
+
+    // Helper for lenient Arabic word matching
+    const isWordMatch = (w1: string, w2: string) => {
+      // Input w1 and w2 are already normalized strings
+      if (w1 === w2) return true;
+      
+      // Lenient match for Alif variations
+      if (w1.replace(/ا/g, '') === w2.replace(/ا/g, '')) return true;
+      
+      // Fuzzy matching for longer words (allow 1 character difference for STT slips)
+      if (w1.length > 3 && w2.length > 3) {
+        const dist = getLevenshteinDistance(w1, w2);
+        if (dist === 1) return true;
+      }
+      
+      return false;
+    };
 
     try {
       // --- LOCAL COMPARISON LOGIC (Strict Word Alignment) ---
@@ -2372,42 +2449,48 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       // Fill DP table
       for (let i = 1; i <= n; i++) {
         for (let j = 1; j <= m; j++) {
-          const cost = normalizedOriginal[i - 1] === normalizedTranscript[j - 1] ? 0 : 1;
+          const cost = isWordMatch(normalizedOriginal[i - 1], normalizedTranscript[j - 1]) ? 0 : 1;
           dp[i][j] = Math.min(
             dp[i - 1][j] + 1,       // deletion (word missed)
             dp[i][j - 1] + 1,       // insertion (extra word said)
-            dp[i - 1][j - 1] + cost // substitution (wrong word)
+            dp[i - 1][j - 1] + cost // match or substitution
           );
         }
       }
 
-      // Backtrack to find exactly which original words were matched in the correct order
+      // Backtrack to find aligned results and identify mistakes
       const matchedWords = new Array(n).fill(false);
+      const mismatchedWords = new Array(n).fill(null);
       const rawMistakes: { type: 'sub'|'del'|'ins', origIdx: number, transIdx: number }[] = [];
-      let i = n;
-      let j = m;
+      let bi = n;
+      let bj = m;
 
-      while (i > 0 || j > 0) {
-        if (i > 0 && j > 0 && normalizedOriginal[i - 1] === normalizedTranscript[j - 1] && dp[i][j] === dp[i - 1][j - 1]) {
-          // Exact match
-          matchedWords[i - 1] = true;
-          i--;
-          j--;
-        } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) {
-          // Substitution
-          rawMistakes.unshift({ type: 'sub', origIdx: i - 1, transIdx: j - 1 });
-          i--;
-          j--;
-        } else if (i > 0 && dp[i][j] === dp[i - 1][j] + 1) {
-          // Deletion (missed word)
-          rawMistakes.unshift({ type: 'del', origIdx: i - 1, transIdx: -1 });
-          i--;
+      while (bi > 0 || bj > 0) {
+        if (bi > 0 && bj > 0 && isWordMatch(normalizedOriginal[bi - 1], normalizedTranscript[bj - 1]) && dp[bi][bj] === dp[bi - 1][bj - 1]) {
+          // Exact (or fuzzy) match
+          matchedWords[bi - 1] = true;
+          bi--;
+          bj--;
+        } else if (bi > 0 && dp[bi][bj] === dp[bi - 1][bj] + 1) {
+          // Deletion (Original word missed)
+          rawMistakes.unshift({ type: 'del', origIdx: bi - 1, transIdx: -1 });
+          bi--;
+        } else if (bj > 0 && dp[bi][bj] === dp[bi][bj - 1] + 1) {
+          // Insertion (Extra word in transcript)
+          rawMistakes.unshift({ type: 'ins', origIdx: bi - 1, transIdx: bj - 1 });
+          bj--;
+        } else if (bi > 0 && bj > 0) {
+          // Substitution (Wrong word)
+          rawMistakes.unshift({ type: 'sub', origIdx: bi - 1, transIdx: bj - 1 });
+          mismatchedWords[bi - 1] = processedTranscript[bj - 1];
+          bi--;
+          bj--;
         } else {
-          // Insertion (extra word)
-          rawMistakes.unshift({ type: 'ins', origIdx: i - 1, transIdx: j - 1 });
-          j--;
+          if (bi > 0) bi--;
+          else if (bj > 0) bj--;
         }
       }
+
 
       // Process rawMistakes to generate human-readable grouped messages
       const mistakes: string[] = [];
@@ -2769,6 +2852,20 @@ function ParentScreen({
         {t[lang].parentDashboard}
       </h2>
 
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6">
+        <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-700">
+          <Languages className="text-emerald-500" size={24} />
+          {t[lang].textLanguage}
+        </h3>
+        <CustomSelect 
+          value={lang}
+          onChange={(val) => setLang(val)}
+          options={APP_LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
+          lang={lang}
+          placeholder={t[lang].searchPlaceholder}
+        />
+      </div>
+
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
@@ -2808,17 +2905,7 @@ function ParentScreen({
         )}
       </div>
 
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-          <Languages className="text-emerald-500" size={20} />
-          {t[lang].textLanguage}
-        </h3>
-        <CustomSelect 
-          value={lang}
-          onChange={(val) => setLang(val)}
-          options={APP_LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
-        />
-      </div>
+
 
       <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 mb-8">
         {/* Mode Toggle */}
@@ -2865,6 +2952,7 @@ function ParentScreen({
               actionLabel={t[lang].add}
               actionIcon={<Plus size={20} />}
               lang={lang}
+              setLang={setLang}
               isParentMode={true}
             />
           </motion.div>
@@ -2873,43 +2961,62 @@ function ParentScreen({
             <h3 className="font-bold text-lg mb-4">{t[lang].chooseSurah}</h3>
             
             <button
+              type="button"
               onClick={() => setIsTextSearchOpen(true)}
-              className="w-full flex items-center justify-center gap-3 p-3 mb-4 rounded-xl font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all border border-emerald-100"
+              className="w-full bg-emerald-50/30 border-2 border-emerald-100/50 rounded-2xl py-4 px-6 text-right flex items-center justify-between hover:border-emerald-300 transition-all focus:border-emerald-500 outline-none shadow-sm group mb-4"
+              dir={lang === 'ar' ? 'rtl' : 'ltr'}
             >
-              <Search size={18} />
-              <span>{lang === 'ar' ? 'البحث بنص الآية' : 'Search by Verse Text'}</span>
+              <div className="flex items-center gap-3">
+                <Search className="text-emerald-500 group-hover:scale-110 transition-transform" size={24} />
+                <span className={`font-bold text-lg ${selectedSurah ? 'text-slate-700' : 'text-slate-400'}`}>
+                  {selectedSurah ? surahs.find(s => s.number === selectedSurah)?.name : t[lang].ayahSearchPlaceholder}
+                </span>
+              </div>
+              <ChevronDown className="text-emerald-300" size={24} />
             </button>
 
-            {surahs.length === 0 ? (
+            {isTextSearchOpen && (
+              <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                  <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      {lang === 'ar' ? 'بحث في القرآن' : 'Search Quran'}
+                    </h3>
+                    <button 
+                      onClick={() => setIsTextSearchOpen(false)}
+                      className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-500"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                    <QuranSearchInline
+                      lang={lang}
+                      onSelect={(surahNum, ayahNum, action) => {
+                        setSelectedSurah(surahNum);
+                        setStartAyah(ayahNum);
+                        const surahData = surahs.find(s => s.number === surahNum);
+                        if (surahData) {
+                          setEndAyah(surahData.numberOfAyahs);
+                        } else {
+                          setEndAyah(ayahNum);
+                        }
+                        setIsTextSearchOpen(false);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {surahs.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-slate-400">
                 <Loader2 className="animate-spin mb-2 text-emerald-500" size={32} />
                 <p>{t[lang].loadingSurahs}</p>
               </div>
-            ) : (
-              <>
-                <div className="mb-3">
-                  <label className="block text-sm font-bold text-slate-600 mb-1">{t[lang].chooseSurah}:</label>
-                  <CustomSelect 
-                    value={selectedSurah}
-                    onChange={(val) => {
-                      const num = parseInt(val);
-                      setSelectedSurah(num);
-                      setStartAyah(1);
-                      const surah = surahs.find(s => s.number === num);
-                      setEndAyah(surah ? surah.numberOfAyahs : 1);
-                    }}
-                    options={surahs.map(s => ({ 
-                      value: s.number, 
-                      label: lang === 'ar' 
-                        ? `${s.number}. ${s.name}`
-                        : `${s.number}. ${s.englishName} (${s.name})`
-                    }))}
-                    lang={lang}
-                    placeholder={lang === 'ar' ? 'ابحث باسم السورة أو رقمها...' : 'Search by name or number...'}
-                  />
-                </div>
-                
-                <div className="flex gap-3 mb-6">
+            )}
+            
+            <div className="flex gap-3 mt-6 mb-6">
                   <div className="flex-1">
                     <label className="block text-sm font-bold text-slate-600 mb-1">{t[lang].fromAyah}:</label>
                     <input 
@@ -2942,40 +3049,9 @@ function ParentScreen({
                   {isLoadingQuran ? <Loader2 className="animate-spin" size={20} /> : <Book size={20} />}
                   {isLoadingQuran ? '...' : t[lang].addAyahs}
                 </button>
-              </>
+              </motion.div>
             )}
-            {isTextSearchOpen && (
-              <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" dir="rtl">
-                <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                  <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                      {lang === 'ar' ? 'بحث في القرآن' : 'Search Quran'}
-                    </h3>
-                    <button 
-                      onClick={() => setIsTextSearchOpen(false)}
-                      className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-500"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                    <QuranSearchInline
-                      lang={lang}
-                      onSelect={(surahNum, ayahNum, action) => {
-                        setSelectedSurah(surahNum);
-                        setStartAyah(ayahNum);
-                        const surahAction = QURAN_SURAHS.find(s => s.number === surahNum);
-                        setEndAyah(surahAction ? Math.min(ayahNum + 5, surahAction.numberOfAyahs) : ayahNum);
-                        setIsTextSearchOpen(false);
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </div>
+          </div>
 
       <h3 className="font-bold text-lg mb-4 text-slate-700">{t[lang].currentTasks}</h3>
       <div className="flex flex-col gap-3">

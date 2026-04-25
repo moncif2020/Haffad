@@ -215,6 +215,21 @@ export const downloadSurahAudio = async (
   }
 };
 
+export const isRangeDownloaded = async (surahNum: number, from: number, to: number, reciter: string) => {
+  try {
+    const cache = await caches.open('quran-audio');
+    for (let i = from; i <= to; i++) {
+      const url = getAudioUrl(reciter, surahNum, i);
+      const cached = await cache.match(url);
+      if (!cached) return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("Cache check failed:", e);
+    return false;
+  }
+};
+
 // Cache for local search to ensure accuracy and speed
 let fullQuranSearchIndex: any[] | null = null;
 let isFetchingIndex = false;
@@ -241,7 +256,7 @@ export const normalizeArabic = (text: string): string => {
     .replace(/\s+/g, " ");
 };
 
-export const searchAyah = async (keyword: string) => {
+export const searchInQuran = async (keyword: string) => {
   if (!keyword || keyword.trim().length < 2) return [];
   
   const cleanKeyword = normalizeArabic(keyword);
@@ -282,10 +297,10 @@ export const searchAyah = async (keyword: string) => {
       // Return limit for UI performance, but we have all matches
       return matches.slice(0, 100).map(match => ({
         text: match.text,
-        surahNumber: match.surahNumber,
+        surahNum: match.surahNumber,
         surahName: match.surahName,
         englishSurahName: match.englishSurahName,
-        ayahNumber: match.ayahNumber
+        ayahNum: match.ayahNumber
       }));
     }
 
@@ -298,10 +313,10 @@ export const searchAyah = async (keyword: string) => {
 
       return data.data.matches.map((match: any) => ({
         text: match.text,
-        surahNumber: match.surah.number,
+        surahNum: match.surah.number,
         surahName: match.surah.name,
         englishSurahName: QURAN_SURAHS[match.surah.number - 1]?.englishName || match.surah.englishName,
-        ayahNumber: match.numberInSurah
+        ayahNum: match.numberInSurah
       }));
     } catch (e) {
       // Final fallback search on api.quran.com if alquran.cloud is completely down
@@ -315,10 +330,10 @@ export const searchAyah = async (keyword: string) => {
         const surah = QURAN_SURAHS[parseInt(surahNum) - 1];
         return {
           text: res.text,
-          surahNumber: parseInt(surahNum),
+          surahNum: parseInt(surahNum),
           surahName: surah?.name || `سورة ${surahNum}`,
           englishSurahName: surah?.englishName || `Surah ${surahNum}`,
-          ayahNumber: parseInt(ayahNum)
+          ayahNum: parseInt(ayahNum)
         };
       });
     }

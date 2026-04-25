@@ -343,8 +343,8 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
   const listenToPage = async (startPage?: number, ayahToFocus?: {surah: number, ayah: number}) => {
     setIsPageLoading(true);
     try {
-      const targetPage = startPage !== undefined ? startPage : currentPage;
-      const targetFocus = ayahToFocus !== undefined ? ayahToFocus : focusedAyah;
+      const targetPage = typeof startPage === 'number' ? startPage : currentPage;
+      const targetFocus = ayahToFocus && typeof (ayahToFocus as any).surah === 'number' ? ayahToFocus : focusedAyah;
 
       // Find all ayahs starting from this page onwards (limit to 50 pages for performance)
       const pageAyahs: {surah: number, ayah: number}[] = [];
@@ -556,7 +556,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           </button>
 
           <button
-            onClick={isPlaying ? stopAudio : listenToPage}
+            onClick={isPlaying ? stopAudio : () => listenToPage()}
             disabled={isPageLoading}
             className={`p-2 sm:p-3.5 rounded-xl transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${isPageLoading || isAudioLoading || isPlaying ? 'text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
             title={isPlaying ? (lang === 'ar' ? "إيقاف الاستماع" : "Stop listening") : (lang === 'ar' ? "الاستماع من هذه الصفحة" : "Listen from this page")}
