@@ -438,14 +438,14 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           {/* Close Button at Top Right with Emerald Glow - Adjusted position to clear text */}
           <button 
             onClick={(e) => { e.stopPropagation(); setIsFullscreen(false); }}
-            className="absolute top-2 right-2 z-[10001] p-2 bg-white/95 backdrop-blur-md rounded-full text-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.5)] border-2 border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.8)] transition-all active:scale-90 group overflow-hidden"
+            className="absolute top-0.5 right-0.5 z-[10001] p-1.5 sm:p-2 bg-white/95 backdrop-blur-md rounded-full text-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.5)] border-2 border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.8)] transition-all active:scale-90 group overflow-hidden"
             aria-label="إغلاق"
           >
             <div className="absolute inset-0 bg-emerald-400/15 animate-pulse"></div>
             <X size={24} className="relative z-10 font-bold" />
           </button>
 
-          <div className="flex-1 w-full h-full relative overflow-hidden flex items-center justify-center p-0">
+          <div className="flex-1 w-full h-full landscape:h-auto relative overflow-hidden landscape:overflow-y-auto flex flex-col items-center justify-center landscape:justify-start p-0">
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                 <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -453,13 +453,13 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
             )}
             {imageSrc && (
               <>
-                <img
-                  src={imageSrc}
-                  alt={`صفحة ${currentPage} من المصحف`}
-                  className="w-full h-full object-contain animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,196,140,0.1)]"
-                  dir="rtl"
-                  onClick={(e) => e.stopPropagation()}
-                />
+              <img
+                src={imageSrc}
+                alt={`صفحة ${currentPage} من المصحف`}
+                className="w-full h-auto portrait:w-auto portrait:max-h-full object-contain animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,196,140,0.1)]"
+                dir="rtl"
+                onClick={(e) => e.stopPropagation()}
+              />
               </>
             )}
           </div>
@@ -526,82 +526,82 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
         </div>
       )}
 
-      <div className="flex items-center justify-between w-full max-w-7xl mb-4 bg-white dark:bg-slate-900 p-2 sm:p-5 rounded-[24px] shadow-md border border-gray-100 dark:border-slate-800" dir="rtl">
-        <div className="flex items-center gap-1 sm:gap-4">
+      <div className="flex items-center justify-between w-full max-w-7xl mb-4 bg-white dark:bg-slate-900 p-1 sm:p-5 rounded-[24px] shadow-md border border-gray-100 dark:border-slate-800" dir="rtl">
+        <div className="flex items-center gap-0.5 sm:gap-4">
           {onClose && (
             <button
               onClick={onClose}
-              className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="p-1 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
               title="خروج"
             >
-              <X className="w-6 h-6 sm:w-8 sm:h-8" />
+              <X className="w-5 h-5 sm:w-8 sm:h-8" />
             </button>
           )}
           
           <button
             onClick={handleNextPage}
             disabled={currentPage === totalPages}
-            className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="p-1 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
             title="الصفحة التالية"
           >
-            <ChevronLeft className="w-7 h-7 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+            <ChevronLeft className="w-6 h-6 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
           </button>
           
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="p-1 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
             title="بحث عن سورة أو آية"
           >
-            <Search className="w-6 h-6 sm:w-8 sm:h-8" />
+            <Search className="w-5 h-5 sm:w-8 sm:h-8" />
           </button>
-
+ 
           <button
             onClick={isPlaying ? stopAudio : () => listenToPage()}
             disabled={isPageLoading}
-            className={`p-2 sm:p-3.5 rounded-xl transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${isPageLoading || isAudioLoading || isPlaying ? 'text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+            className={`p-1 sm:p-3.5 rounded-xl transition-all focus:ring-2 focus:ring-emerald-500 outline-none ${isPageLoading || isAudioLoading || isPlaying ? 'text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
             title={isPlaying ? (lang === 'ar' ? "إيقاف الاستماع" : "Stop listening") : (lang === 'ar' ? "الاستماع من هذه الصفحة" : "Listen from this page")}
           >
             {isPageLoading || isAudioLoading ? (
-              <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin" />
+              <Loader2 className="w-5 h-5 sm:w-8 sm:h-8 animate-spin" />
             ) : isPlaying ? (
-              <Square className="w-6 h-6 sm:w-8 sm:h-8 fill-current" />
+              <Square className="w-5 h-5 sm:w-8 sm:h-8 fill-current" />
             ) : (
-              <Headphones className="w-6 h-6 sm:w-8 sm:h-8" />
+              <Headphones className="w-5 h-5 sm:w-8 sm:h-8" />
             )}
           </button>
         </div>
         
-        <div className="flex flex-col items-center px-4 sm:px-8 border-x border-emerald-50 dark:border-slate-800">
-          <span className="text-xl sm:text-3xl font-black text-emerald-900 dark:text-emerald-50 font-arabic whitespace-nowrap">
+        <div className="flex flex-col items-center px-1 sm:px-8 border-x border-emerald-50 dark:border-slate-800 flex-1 min-w-0">
+          <span className="text-base sm:text-3xl font-black text-emerald-900 dark:text-emerald-50 font-arabic whitespace-nowrap overflow-hidden text-ellipsis">
             الصفحة {currentPage}
           </span>
-          <span className="text-[10px] sm:text-sm text-emerald-600/70 dark:text-emerald-400/70 font-bold font-arabic whitespace-nowrap">
+          <span className="text-[8px] sm:text-sm text-emerald-600/70 dark:text-emerald-400/70 font-bold font-arabic whitespace-nowrap overflow-hidden text-ellipsis">
             رواية ورش عن نافع
           </span>
         </div>
-
+ 
         <button
           onClick={handlePrevPage}
           disabled={currentPage === 1}
-          className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
+          className="p-1 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
           title="الصفحة السابقة"
         >
-          <ChevronRight className="w-7 h-7 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+          <ChevronRight className="w-6 h-6 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
         </button>
       </div>
 
-      <div className="relative w-full max-w-7xl flex-1 flex items-center justify-center bg-white dark:bg-[#1a1c1e] rounded-[32px] shadow-2xl border border-gray-100 dark:border-slate-800 overflow-hidden min-h-[500px] group transition-all duration-500">
+      <div className="relative w-full max-w-7xl flex-1 flex flex-col bg-white dark:bg-[#1a1c1e] rounded-[32px] shadow-2xl border border-gray-100 dark:border-slate-800 overflow-hidden landscape:overflow-y-auto group transition-all duration-500">
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/90 dark:bg-[#1a1c1e]/90 z-10 backdrop-blur-sm">
             <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         )}
         {imageSrc && (
-          <div className="w-full h-full p-2 sm:p-6 flex items-center justify-center">
+          <div className="w-full flex-1 landscape:h-auto p-2 sm:p-6 flex flex-col items-center justify-center landscape:justify-start">
             <img
               src={imageSrc}
               alt={`صفحة ${currentPage} من المصحف`}
-              className="max-w-full max-h-full object-contain cursor-pointer transition-transform duration-500 group-hover:scale-[1.02] shadow-2xl rounded-lg"
+              className="w-full h-auto portrait:w-auto portrait:max-h-full object-contain cursor-pointer transition-transform duration-500 group-hover:scale-[1.02] shadow-2xl rounded-lg"
               onLoad={() => setIsLoading(false)}
               onError={() => setIsLoading(false)}
               onClick={() => setIsFullscreen(true)}
