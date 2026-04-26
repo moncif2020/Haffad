@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Cat, BookOpen, Settings, Coins, Heart, Plus, Check, ArrowRight, RefreshCw, X, Mic, ListOrdered, LayoutGrid, Eye, EyeOff, Book, Edit3, Loader2, Headphones, Play, Pause, Square, Volume2, TreePine, Leaf, Droplet, HeartHandshake, Utensils, Gift, Sprout, FileText, Languages, Moon, Sun, Download, Menu, ChevronDown, ChevronUp, Image as ImageIcon, Video, ShieldCheck, AlertCircle, Star, Sparkles, LogIn, LogOut, User as UserIcon, CheckCircle, Camera, Search } from 'lucide-react';
-import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl, isRangeDownloaded } from './lib/quran';
+import { QURAN_SURAHS, fetchAyahs, downloadSurahAudio, getAudioUrl, isRangeDownloaded, safeJson } from './lib/quran';
 import { MushafViewer } from './components/MushafViewer';
 import { CustomSelect } from './components/CustomSelect';
 import { QuranSearchInline } from './components/QuranSearchInline';
@@ -18,7 +18,15 @@ import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDo
 import { ref, uploadBytes, getDownloadURL, getBlob } from 'firebase/storage';
 import { signInWithPopup, signOut, onAuthStateChanged, User, signInWithCustomToken } from 'firebase/auth';
 
-// --- Logging Helper ---
+// --- Alignment and Result Types ---
+type SegmentType = 'correct' | 'substitution' | 'deletion' | 'insertion' | 'swapped';
+interface AlignmentSegment {
+  type: SegmentType;
+  text: string; 
+  originalText?: string;
+  origIdx?: number;
+  verseIdx?: number;
+}
 const devLog = (...args: any[]) => {
   if (import.meta.env.DEV) console.log(...args);
 };
@@ -320,13 +328,29 @@ function CustomTextInput({
             </motion.p>
           )}
         </div>
-        <textarea 
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder={translations[lang]?.textPlaceholder || translations['en']?.textPlaceholder}
-          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium min-h-[150px] resize-none"
-          dir="auto"
-        />
+        <div className="relative group">
+          <textarea 
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder={translations[lang]?.textPlaceholder || translations['en']?.textPlaceholder}
+            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 font-medium min-h-[150px] resize-none"
+            dir="auto"
+          />
+          <AnimatePresence>
+            {text.length > 0 && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                onClick={() => setText('')}
+                className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white text-red-500 rounded-full shadow-lg backdrop-blur-sm transition-all border border-red-50 z-10 hover:scale-110 active:scale-95"
+                title={lang.startsWith('ar') ? "مسح النص" : "Clear text"}
+              >
+                <X size={18} strokeWidth={2.5} />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
         <p className="text-xs text-slate-400 mt-2">{translations[lang]?.textTip || translations['en']?.textTip}</p>
       </div>
 
@@ -365,9 +389,9 @@ function ListenScreen({ lang }: { lang: Language }) {
 
   // Quran State
   const [surahs, setSurahs] = useState<any[]>(QURAN_SURAHS);
-  const [selectedSurah, setSelectedSurah] = useState<number>(1);
+  const [selectedSurah, setSelectedSurah] = useState<number | null>(null);
   const [fromAyah, setFromAyah] = useState<number>(1);
-  const [toAyah, setToAyah] = useState<number>(7);
+  const [toAyah, setToAyah] = useState<number>(1);
   const {
     playlist, setPlaylist,
     currentTrackIndex, setCurrentTrackIndex,
@@ -450,11 +474,19 @@ function ListenScreen({ lang }: { lang: Language }) {
     }
   };
 
-  const startListening = async () => {
+  const startListening = async (overrideSurah?: number, overrideFrom?: number, overrideTo?: number) => {
+    const sId = overrideSurah !== undefined ? overrideSurah : selectedSurah;
+    const fId = overrideFrom !== undefined ? overrideFrom : fromAyah;
+    const tId = overrideTo !== undefined ? overrideTo : toAyah;
+
     if (listenMode === 'quran') {
+      if (sId === null) {
+        alert(t[lang].chooseSurah || "Please choose a surah first");
+        return;
+      }
       setIsLoading(true);
       try {
-        const data = await fetchAyahs(selectedSurah, fromAyah, toAyah);
+        const data = await fetchAyahs(sId, fId, tId);
         const ayahs = data.ayahs;
 
         if (ayahs.length === 0) {
@@ -470,9 +502,9 @@ function ListenScreen({ lang }: { lang: Language }) {
           ayahs.forEach((ayah: any) => {
             for (let i = 0; i < repetitions; i++) {
               newPlaylist.push({
-                url: getAudioUrl(reciter, selectedSurah, ayah.numberInSurah),
+                url: getAudioUrl(reciter, sId, ayah.numberInSurah),
                 text: ayah.text,
-                surah: selectedSurah,
+                surah: sId,
                 ayah: ayah.numberInSurah
               });
             }
@@ -754,7 +786,7 @@ function ListenScreen({ lang }: { lang: Language }) {
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <button 
                 onClick={startListening}
-                disabled={isLoading}
+                disabled={isLoading || selectedSurah === null}
                 className="flex-[2] bg-emerald-500 text-white font-bold py-5 rounded-2xl shadow-xl shadow-emerald-100 hover:bg-emerald-600 focus:ring-4 focus:ring-emerald-300 outline-none transition-all flex items-center justify-center gap-3 text-xl"
               >
                 {isLoading ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" size={24} />}
@@ -800,23 +832,14 @@ function ListenScreen({ lang }: { lang: Language }) {
                       onSelect={(surahNum, ayahNum, action) => {
                         setSelectedSurah(surahNum);
                         setFromAyah(ayahNum);
-                        const surahAction = QURAN_SURAHS.find(s => s.number === surahNum);
+                        const surahObj = QURAN_SURAHS.find(s => s.number === surahNum);
+                        const finalToAyah = surahObj ? surahObj.numberOfAyahs : ayahNum;
                         
-                        // If it's a play action, we start from this ayah until the end of surah by default
-                        // or just keep existing logic
-                        if (surahAction) {
-                          setToAyah(surahAction.numberOfAyahs);
-                        } else {
-                          setToAyah(ayahNum);
-                        }
-                        
+                        setToAyah(finalToAyah);
                         setIsTextSearchOpen(false);
                         
                         if (action === 'play') {
-                          // Allow state updates then start listening
-                          setTimeout(() => {
-                            startListening();
-                          }, 300);
+                          startListening(surahNum, ayahNum, finalToAyah);
                         }
                       }}
                     />
@@ -1118,7 +1141,7 @@ export default function App() {
             const response = await fetch(proxyUrl);
             if (!response.ok) throw new Error('Proxy fetch failed');
             
-            const { base64: base64Data, contentType } = await response.json();
+            const { base64: base64Data, contentType } = await safeJson(response);
 
             // 2. Call Gemini for extraction
             const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || 
@@ -1428,10 +1451,10 @@ export default function App() {
           <div className="relative shrink-0" ref={langMenuRef}>
             <button 
               onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
-              className="flex items-center gap-1 sm:gap-1.5 bg-slate-50 text-slate-700 text-[10px] sm:text-sm font-bold py-1.5 px-2 sm:px-3 rounded-full hover:bg-slate-100 transition-colors border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+              className="flex items-center gap-1 sm:gap-1.5 bg-white text-emerald-700 text-[10px] sm:text-xs font-bold py-1 px-2 sm:px-3 rounded-full hover:bg-emerald-50 transition-all border-2 border-emerald-500 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none"
             >
-              <Languages size={15} className="text-emerald-600 sm:size-5" />
-              <span className="uppercase sm:inline-block">{lang}</span>
+              <Languages size={12} className="text-emerald-600 sm:size-4" />
+              <span className="uppercase sm:inline-block tracking-wide">{lang}</span>
               <ChevronDown size={10} className={`transition-transform sm:size-4 ${isLangMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
@@ -1498,7 +1521,7 @@ export default function App() {
                 <img 
                   src={user.photoURL || ''} 
                   alt={user.displayName || ''} 
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-emerald-500 shadow-sm"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 border-emerald-500 shadow-sm object-cover"
                   referrerPolicy="no-referrer"
                 />
               </button>
@@ -1515,19 +1538,19 @@ export default function App() {
           
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className="text-slate-400 hover:text-slate-600 transition-colors focus:ring-2 focus:ring-emerald-500 outline-none p-1 rounded-full"
+            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 bg-white border-2 border-emerald-500 transition-all focus:ring-2 focus:ring-emerald-500 shadow-sm outline-none rounded-full"
           >
-            {isDarkMode ? <Sun size={22} className="text-amber-500 sm:size-6" /> : <Moon size={22} className="sm:size-6" />}
+            {isDarkMode ? <Sun size={14} className="text-amber-500 sm:size-4" /> : <Moon size={14} className="sm:size-4" />}
           </button>
           
           <div className="flex items-center gap-1 sm:gap-2">
             {!isPremium && (
               <button 
                 onClick={() => setView('upgrade')}
-                className="flex items-center gap-1 bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 px-2 py-1 sm:px-3 sm:py-1.5 rounded-full font-black text-[9px] sm:text-xs shadow-md shadow-amber-200 hover:scale-105 transition-transform active:scale-95 focus:ring-4 focus:ring-amber-300 outline-none"
+                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-amber-400 text-amber-950 rounded-full border-2 border-emerald-500 font-black text-[9px] sm:text-xs shadow-md hover:scale-105 transition-transform active:scale-95 focus:ring-4 focus:ring-emerald-200 outline-none"
+                title={t[lang].upgrade}
               >
-                <Star size={14} fill="currentColor" />
-                <span className="uppercase tracking-wider hidden min-[450px]:inline">{t[lang].upgradeShort}</span>
+                <Star size={12} fill="currentColor" />
               </button>
             )}
             
@@ -1608,9 +1631,9 @@ export default function App() {
                 {!isPremium && (
                   <button 
                     onClick={() => { setView('upgrade'); setIsSidebarOpen(false); }}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-amber-500 outline-none ${view === 'upgrade' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-200'}`}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all w-full focus:ring-2 focus:ring-amber-500 outline-none ${view === 'upgrade' ? 'bg-amber-100 text-amber-700 font-bold' : 'bg-amber-500 text-amber-950 font-bold hover:bg-amber-600 shadow-md shadow-amber-200'}`}
                   >
-                    <Star size={22} className={view === 'upgrade' ? 'text-amber-600' : 'text-white'} fill={view === 'upgrade' ? 'currentColor' : 'none'} />
+                    <Star size={22} className={view === 'upgrade' ? 'text-amber-600' : 'text-amber-950'} fill="currentColor" />
                     <span>{t[lang].upgrade}</span>
                   </button>
                 )}
@@ -2266,12 +2289,18 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
   const [transcript, setTranscript] = useState('');
   const [writeText, setWriteText] = useState('');
   const [isSelfRevealed, setIsSelfRevealed] = useState(false);
-  const [result, setResult] = useState<{ score: number, matchedWords: boolean[], originalWords: string[], mistakes?: string[], pronouncedWords?: {word: string, isCorrect: boolean, isSwapped: boolean}[] } | null>(null);
+  const [result, setResult] = useState<{ 
+    score: number, 
+    segments: AlignmentSegment[],
+    mistakes?: string[]
+  } | null>(null);
   const [error, setError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const recognitionRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
+  const isStartedRef = useRef(false);
+  const isStartingRef = useRef(false);
   const fullTranscriptRef = useRef('');
   const currentSessionTranscriptRef = useRef('');
 
@@ -2296,6 +2325,11 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       
       rec.continuous = true;
       rec.interimResults = true;
+
+      rec.onstart = () => {
+        isStartedRef.current = true;
+        isStartingRef.current = false;
+      };
 
       rec.onresult = (event: any) => {
         let sessionString = '';
@@ -2329,26 +2363,61 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       };
 
       rec.onend = () => {
+        isStartedRef.current = false;
+        isStartingRef.current = false;
         if (isRecordingRef.current) {
           if (currentSessionTranscriptRef.current) {
             fullTranscriptRef.current = (fullTranscriptRef.current + ' ' + currentSessionTranscriptRef.current).trim();
             currentSessionTranscriptRef.current = '';
           }
+          // Debounced restart
           setTimeout(() => {
-            if (isRecordingRef.current) {
-              try { recognitionRef.current?.start(); } catch (e) {}
+            if (isRecordingRef.current && !isStartedRef.current && !isStartingRef.current) {
+              try { 
+                isStartingRef.current = true;
+                recognitionRef.current?.start(); 
+              } catch (e: any) {
+                isStartingRef.current = false;
+                if (e.message?.includes('already started')) {
+                  // Ignore if already started
+                } else {
+                  devError(e);
+                }
+              }
             }
-          }, 300);
+          }, 400);
         } else {
           setIsRecording(false);
         }
       };
 
+      const startRec = () => {
+        if (!recognitionRef.current) return;
+        if (isStartedRef.current || isStartingRef.current) return;
+        
+        try {
+          isStartingRef.current = true;
+          recognitionRef.current.start();
+        } catch (e: any) {
+          isStartingRef.current = false;
+          if (e.message?.includes('already started')) {
+            // Safe to ignore
+          } else {
+            devError(e);
+          }
+        }
+      };
+
       recognitionRef.current = rec;
+      rec._safeStart = startRec; // Attach safe start helper
+      
       return () => {
         isRecordingRef.current = false;
+        isStartedRef.current = false;
+        isStartingRef.current = false;
         rec.onend = null;
         rec.onerror = null;
+        rec.onstart = null;
         try { rec.stop(); } catch (e) {}
       };
     } else {
@@ -2370,10 +2439,20 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       
       isRecordingRef.current = true;
       setIsRecording(true);
-      try {
-        recognitionRef.current?.start();
-      } catch (e) {
-        devError(e);
+      if (recognitionRef.current?._safeStart) {
+        recognitionRef.current._safeStart();
+      } else {
+        try {
+          if (!isStartedRef.current && !isStartingRef.current) {
+            isStartingRef.current = true;
+            recognitionRef.current?.start();
+          }
+        } catch (e: any) {
+          isStartingRef.current = false;
+          if (!e.message?.includes('already started')) {
+            devError(e);
+          }
+        }
       }
     }
   };
@@ -2398,13 +2477,13 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
     const rawTranscriptWords = textToCheck.split(/\s+/).filter(w => w.trim() !== '');
     const processedTranscript: string[] = [];
     for (let i = 0; i < rawTranscriptWords.length; i++) {
-      const current = rawTranscriptWords[i];
-      if (current === "و" && i < rawTranscriptWords.length - 1) {
-        processedTranscript.push("و" + rawTranscriptWords[i + 1]);
-        i++; // Skip next word as it's merged
-      } else {
-        processedTranscript.push(current);
-      }
+        const current = rawTranscriptWords[i];
+        if (current === "و" && i < rawTranscriptWords.length - 1) {
+            processedTranscript.push("و" + rawTranscriptWords[i + 1]);
+            i++;
+        } else {
+            processedTranscript.push(current);
+        }
     }
 
     const normalizedOriginal = originalWords.map(w => normalizeArabic(w));
@@ -2421,18 +2500,12 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
 
     // Helper for lenient Arabic word matching
     const isWordMatch = (w1: string, w2: string) => {
-      // Input w1 and w2 are already normalized strings
       if (w1 === w2) return true;
-      
-      // Lenient match for Alif variations
       if (w1.replace(/ا/g, '') === w2.replace(/ا/g, '')) return true;
-      
-      // Fuzzy matching for longer words (allow 1 character difference for STT slips)
       if (w1.length > 3 && w2.length > 3) {
         const dist = getLevenshteinDistance(w1, w2);
         if (dist === 1) return true;
       }
-      
       return false;
     };
 
@@ -2442,47 +2515,37 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
       const m = normalizedTranscript.length;
       const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
 
-      // Initialize DP table
       for (let i = 0; i <= n; i++) dp[i][0] = i;
       for (let j = 0; j <= m; j++) dp[0][j] = j;
 
-      // Fill DP table
       for (let i = 1; i <= n; i++) {
         for (let j = 1; j <= m; j++) {
           const cost = isWordMatch(normalizedOriginal[i - 1], normalizedTranscript[j - 1]) ? 0 : 1;
           dp[i][j] = Math.min(
-            dp[i - 1][j] + 1,       // deletion (word missed)
-            dp[i][j - 1] + 1,       // insertion (extra word said)
-            dp[i - 1][j - 1] + cost // match or substitution
+            dp[i - 1][j] + 1,       // deletion
+            dp[i][j - 1] + 1,       // insertion
+            dp[i - 1][j - 1] + cost // match/substitution
           );
         }
       }
 
-      // Backtrack to find aligned results and identify mistakes
-      const matchedWords = new Array(n).fill(false);
-      const mismatchedWords = new Array(n).fill(null);
-      const rawMistakes: { type: 'sub'|'del'|'ins', origIdx: number, transIdx: number }[] = [];
+      const segments: AlignmentSegment[] = [];
       let bi = n;
       let bj = m;
 
       while (bi > 0 || bj > 0) {
         if (bi > 0 && bj > 0 && isWordMatch(normalizedOriginal[bi - 1], normalizedTranscript[bj - 1]) && dp[bi][bj] === dp[bi - 1][bj - 1]) {
-          // Exact (or fuzzy) match
-          matchedWords[bi - 1] = true;
+          segments.unshift({ type: 'correct', text: originalWords[bi - 1], originalText: originalWords[bi - 1], origIdx: bi - 1 });
           bi--;
           bj--;
         } else if (bi > 0 && dp[bi][bj] === dp[bi - 1][bj] + 1) {
-          // Deletion (Original word missed)
-          rawMistakes.unshift({ type: 'del', origIdx: bi - 1, transIdx: -1 });
+          segments.unshift({ type: 'deletion', text: originalWords[bi - 1], origIdx: bi - 1 });
           bi--;
         } else if (bj > 0 && dp[bi][bj] === dp[bi][bj - 1] + 1) {
-          // Insertion (Extra word in transcript)
-          rawMistakes.unshift({ type: 'ins', origIdx: bi - 1, transIdx: bj - 1 });
+          segments.unshift({ type: 'insertion', text: processedTranscript[bj - 1] });
           bj--;
         } else if (bi > 0 && bj > 0) {
-          // Substitution (Wrong word)
-          rawMistakes.unshift({ type: 'sub', origIdx: bi - 1, transIdx: bj - 1 });
-          mismatchedWords[bi - 1] = processedTranscript[bj - 1];
+          segments.unshift({ type: 'substitution', text: processedTranscript[bj - 1], originalText: originalWords[bi - 1], origIdx: bi - 1 });
           bi--;
           bj--;
         } else {
@@ -2491,101 +2554,46 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
         }
       }
 
-
-      // Process rawMistakes to generate human-readable grouped messages
+      // Detect Swapped Verses
       const mistakes: string[] = [];
-      let currentGroup: any[] = [];
-      
-      const flushGroup = () => {
-        if (currentGroup.length === 0) return;
-        const type = currentGroup[0].type;
-        const isAr = lang.startsWith('ar');
-        
-        if (type === 'del') {
-          const words = currentGroup.map(m => originalWords[m.origIdx]).join(' ');
-          mistakes.push(isAr ? `نقصان في القراءة (كلمة/آية): "${words}"` : `Missing words: "${words}"`);
-        } else if (type === 'ins') {
-          const addedWords = currentGroup.map(m => normalizedTranscript[m.transIdx]).join(' ');
-          const afterIdx = currentGroup[0].origIdx;
-          const afterWord = isAr 
-            ? (afterIdx >= 0 ? `بعد كلمة "${originalWords[afterIdx]}"` : "في بداية القراءة")
-            : (afterIdx >= 0 ? `after word "${originalWords[afterIdx]}"` : "at the beginning");
-          mistakes.push(isAr ? `زيادة في القراءة: قرأت "${addedWords}" ${afterWord}` : `Extra words: you said "${addedWords}" ${afterWord}`);
-        } else if (type === 'sub') {
-          currentGroup.forEach(m => {
-            const originalWord = originalWords[m.origIdx];
-            const transcriptWord = normalizedTranscript[m.transIdx];
-            const existsElsewhere = normalizedOriginal.includes(transcriptWord);
-            
-            if (existsElsewhere) {
-              mistakes.push(isAr 
-                ? `إخلال بالترتيب (كلمة في غير موضعها): قرأت "${transcriptWord}" بدلاً من "${originalWord}"`
-                : `Order violation (word out of place): you said "${transcriptWord}" instead of "${originalWord}"`);
-            } else {
-              mistakes.push(isAr 
-                ? `خطأ في النطق (كلمة غير صحيحة): قرأت "${transcriptWord}" بدلاً من "${originalWord}"`
-                : `Pronunciation error (incorrect word): you said "${transcriptWord}" instead of "${originalWord}"`);
-            }
-          });
-        }
-        currentGroup = [];
-      };
-
-      for (const m of rawMistakes) {
-        if (currentGroup.length === 0 || currentGroup[currentGroup.length - 1].type === m.type) {
-          currentGroup.push(m);
-        } else {
-          flushGroup();
-          currentGroup.push(m);
-        }
-      }
-      flushGroup();
-
-      // Calculate strict score
-      const maxDistance = Math.max(n, m);
-      const distance = dp[n][m];
-      // If maxDistance is 0, score is 100. Otherwise, calculate percentage.
-      const score = maxDistance === 0 ? 100 : Math.max(0, Math.round(((maxDistance - distance) / maxDistance) * 100));
-      
-      setResult({ score, matchedWords, originalWords, mistakes });
-
-      // --- VERSE SWAP DETECTION & AS-PRONOUNCED SEOUENCE ---
       const isQuran = lesson.type === 'quran' || lesson.text.includes('۝');
       if (isQuran) {
+        // Find verse ranges (start and end word indices)
         const versesList = lesson.text.split('۝').map(v => v.trim()).filter(v => v);
+        let currentWordOffset = 0;
+        const verseRanges = versesList.map((vStr) => {
+          const vWords = vStr.split(/\s+/).filter(w => normalizeArabic(w).length > 0);
+          const range = { start: currentWordOffset, end: currentWordOffset + vWords.length - 1 };
+          currentWordOffset += vWords.length;
+          return range;
+        });
+
         const transcriptNorm = normalizeArabic(textToCheck);
-        
         const foundVerses = versesList.map((vStr, vIdx) => {
           const vNorm = normalizeArabic(vStr);
           const pos = transcriptNorm.indexOf(vNorm);
-          return { vIdx, pos, text: vStr };
+          return { vIdx, pos };
         }).filter(v => v.pos !== -1).sort((a, b) => a.pos - b.pos);
 
-        const verseSwaps: string[] = [];
-        let hasInversion = false;
         for (let k = 0; k < foundVerses.length - 1; k++) {
           if (foundVerses[k].vIdx > foundVerses[k + 1].vIdx) {
-            hasInversion = true;
             const firstVerseNum = foundVerses[k].vIdx + 1;
             const secondVerseNum = foundVerses[k + 1].vIdx + 1;
-            verseSwaps.push(t[lang].verseSwap.replace('{first}', String(firstVerseNum)).replace('{second}', String(secondVerseNum)));
+            mistakes.push(t[lang].verseSwap.replace('{first}', String(firstVerseNum)).replace('{second}', String(secondVerseNum)));
+            
+            // Mark related segments as swapped using the pre-calculated verse ranges
+            const range = verseRanges[foundVerses[k].vIdx];
+            segments.forEach(seg => {
+              if (seg.type === 'correct' && seg.origIdx !== undefined && seg.origIdx >= range.start && seg.origIdx <= range.end) {
+                seg.type = 'swapped';
+              }
+            });
           }
         }
-
-        if (hasInversion) {
-          const pronouncedWords: {word: string, isCorrect: boolean, isSwapped: boolean}[] = [];
-          foundVerses.forEach((fv, idx) => {
-            const vWords = fv.text.split(/\s+/).filter(w => w.trim());
-            // Check if this verse is out of its natural order
-            const isSwapped = fv.vIdx !== idx; 
-            vWords.forEach(w => {
-              pronouncedWords.push({ word: w, isCorrect: true, isSwapped });
-            });
-          });
-          
-          setResult(prev => prev ? { ...prev, mistakes: [...(prev.mistakes || []), ...verseSwaps], pronouncedWords } : null);
-        }
       }
+
+      const score = Math.max(0, Math.round(((Math.max(n, m) - dp[n][m]) / Math.max(n, m)) * 100));
+      setResult({ score, segments, mistakes });
     } catch (e: any) {
       console.error("Analysis error:", e);
       setError(t[lang].errorAnalyzingRecitation || "Error analyzing recitation. Please try again.");
@@ -2712,20 +2720,46 @@ function ReciteGame({ lesson, onSuccess, lang }: { lesson: Lesson, onSuccess: ()
                     <p className="text-slate-400 font-bold">{lang === 'ar' ? 'نتيجتك النهائية' : 'Your final score'}</p>
                   </div>
                 </div>
-                <div className="space-y-4">
-                   {result.pronouncedWords ? (
-                     result.pronouncedWords.map((wordObj, index) => (
-                       <span key={index} className={`inline-block mx-1 px-1 rounded transition-colors ${wordObj.isSwapped ? 'text-red-500 bg-red-50 underline decoration-red-300 decoration-2' : 'text-green-600 bg-green-50'}`}>
-                         {wordObj.word}
-                       </span>
-                     ))
-                   ) : (
-                     result.originalWords.map((word, index) => (
-                       <span key={index} className={`inline-block mx-1 px-1 rounded transition-colors ${result.matchedWords[index] ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50 underline decoration-red-300 decoration-2'}`}>
-                         {word}
-                       </span>
-                     ))
-                   )}
+                <div className="flex flex-wrap gap-y-6 justify-center lg:justify-start" dir={APP_LANGUAGES.find(l => l.code === (lesson.lang || lang))?.dir || 'auto'}>
+                  {result.segments.map((seg, index) => {
+                    if (seg.type === 'correct') {
+                      return <span key={index} className="mx-1 px-1 text-green-600 bg-green-50 rounded font-arabic">{seg.text}</span>;
+                    }
+                    if (seg.type === 'swapped') {
+                      return <span key={index} className="mx-1 px-1 text-purple-600 bg-purple-50 rounded font-arabic underline decoration-purple-300 decoration-2">{seg.text}</span>;
+                    }
+                    if (seg.type === 'deletion') {
+                      return (
+                        <span key={index} className="group relative mx-1 px-1 text-slate-400 font-arabic line-through decoration-slate-300 decoration-2">
+                          {seg.text}
+                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap mb-1">
+                            {lang === 'ar' ? 'كلمة ناقصة' : 'Missing word'}
+                          </span>
+                        </span>
+                      );
+                    }
+                    if (seg.type === 'substitution') {
+                      return (
+                        <span key={index} className="group relative mx-1 px-1 text-red-500 bg-red-50 rounded font-arabic border-b-2 border-red-300">
+                          {seg.text}
+                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 hidden group-hover:block bg-red-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap mb-1">
+                            {lang === 'ar' ? `بدلاً من: ${seg.originalText}` : `Instead of: ${seg.originalText}`}
+                          </span>
+                        </span>
+                      );
+                    }
+                    if (seg.type === 'insertion') {
+                       return (
+                        <span key={index} className="group relative mx-1 px-1 text-amber-600 bg-amber-50 rounded font-arabic italic">
+                          {seg.text}
+                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 hidden group-hover:block bg-amber-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap mb-1">
+                            {lang === 'ar' ? 'كلمة زائدة' : 'Extra word'}
+                          </span>
+                        </span>
+                      );
+                    }
+                    return null;
+                  })}
                 </div>
               </div>
 
@@ -2852,23 +2886,9 @@ function ParentScreen({
         {t[lang].parentDashboard}
       </h2>
 
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-700">
-          <Languages className="text-emerald-500" size={24} />
-          {t[lang].textLanguage}
-        </h3>
-        <CustomSelect 
-          value={lang}
-          onChange={(val) => setLang(val)}
-          options={APP_LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
-          lang={lang}
-          placeholder={t[lang].searchPlaceholder}
-        />
-      </div>
-
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+          <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
             <ImageIcon size={24} />
           </div>
           <div>
@@ -2878,31 +2898,11 @@ function ParentScreen({
         </div>
         <button 
           onClick={() => setIsRemoteModalOpen(true)}
-          className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2"
+          className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center gap-2"
         >
           <Plus size={18} />
           {t[lang].connectPhone}
         </button>
-      </div>
-
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-6 flex items-center justify-between">
-        <div>
-          <h3 className="font-bold text-slate-500 text-sm uppercase tracking-wider mb-1">{t[lang].currentPlan}</h3>
-          <div className="flex items-center gap-2">
-            <span className={`text-xl font-black ${isPremium ? 'text-emerald-600' : 'text-slate-800'}`}>
-              {isPremium ? t[lang].premium : t[lang].free}
-            </span>
-            {isPremium && <Star size={18} className="text-amber-400" fill="currentColor" />}
-          </div>
-        </div>
-        {!isPremium && (
-          <button 
-            onClick={onUpgrade}
-            className="bg-emerald-600 text-white px-6 py-2 rounded-full font-bold text-sm shadow-md shadow-emerald-100 hover:bg-emerald-700 transition-all"
-          >
-            {t[lang].upgrade}
-          </button>
-        )}
       </div>
 
 

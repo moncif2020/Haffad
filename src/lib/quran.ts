@@ -115,7 +115,8 @@ export const QURAN_SURAHS = [
   { "number": 114, "name": "سُورَةُ النَّاسِ", "englishName": "An-Nas", "numberOfAyahs": 6 }
 ];
 
-export const getAudioUrl = (reciterCode: string, surahNum: number, ayahInSurah: number, mirrorIndex: number = 0) => {
+export const getAudioUrl = (reciterCode: string, surahNum: number | null, ayahInSurah: number | null, mirrorIndex: number = 0) => {
+  if (surahNum === null || ayahInSurah === null) return "";
   const surahStr = surahNum.toString().padStart(3, '0');
   const ayahStr = ayahInSurah.toString().padStart(3, '0');
   
@@ -149,13 +150,26 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
   }
 }
 
+export async function safeJson(response: Response) {
+  const text = await response.text();
+  if (!text) throw new Error("Empty response body");
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("JSON parse error. Body snippet:", text.slice(0, 200));
+    throw e;
+  }
+}
+
 export const fetchAyahs = async (surahNum: number, from: number, to: number) => {
   try {
     // Primary source: alquran.cloud
     try {
       const response = await fetchWithRetry(`https://api.alquran.cloud/v1/surah/${surahNum}/editions/quran-uthmani`);
-      const data = await response.json();
-      const surah = data.data[0];
+      const data = await safeJson(response);
+      const surah = data.data?.[0];
+      if (!surah) throw new Error("Invalid data structure from alquran.cloud");
+      
       return {
         surahName: surah.name,
         ayahs: surah.ayahs.slice(from - 1, to).map((a: any) => ({
@@ -168,9 +182,11 @@ export const fetchAyahs = async (surahNum: number, from: number, to: number) => 
       console.warn('Primary API failed, trying fallback source...', e);
       // Fallback source: api.quran.com
       const response = await fetchWithRetry(`https://api.quran.com/api/v4/quran/verses/uthmani?chapter_number=${surahNum}`);
-      const data = await response.json();
+      const data = await safeJson(response);
       const surahData = QURAN_SURAHS[surahNum - 1];
       
+      if (!data.verses) throw new Error("Invalid data structure from api.quran.com");
+
       return {
         surahName: surahData.name,
         ayahs: data.verses.slice(from - 1, to).map((v: any) => ({
@@ -215,7 +231,8 @@ export const downloadSurahAudio = async (
   }
 };
 
-export const isRangeDownloaded = async (surahNum: number, from: number, to: number, reciter: string) => {
+export const isRangeDownloaded = async (surahNum: number | null, from: number | null, to: number | null, reciter: string) => {
+  if (surahNum === null || from === null || to === null) return false;
   try {
     const cache = await caches.open('quran-audio');
     for (let i = from; i <= to; i++) {
@@ -267,7 +284,7 @@ export const searchInQuran = async (keyword: string) => {
       isFetchingIndex = true;
       try {
         const response = await fetchWithRetry('https://api.alquran.cloud/v1/quran/quran-simple-clean');
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.status === 'OK') {
           fullQuranSearchIndex = data.data.surahs.flatMap((s: any) => 
             s.ayahs.map((a: any) => ({
@@ -307,7 +324,7 @@ export const searchInQuran = async (keyword: string) => {
     // Fallback to API search if local indexing is still in progress or failed
     try {
       const response = await fetchWithRetry(`https://api.alquran.cloud/v1/search/${encodeURIComponent(cleanKeyword)}/all/quran-simple-clean`);
-      const data = await response.json();
+      const data = await safeJson(response);
       
       if (!data.data || !data.data.matches) return [];
 
@@ -321,7 +338,7 @@ export const searchInQuran = async (keyword: string) => {
     } catch (e) {
       // Final fallback search on api.quran.com if alquran.cloud is completely down
       const fallbackRes = await fetchWithRetry(`https://api.quran.com/api/v4/search?q=${encodeURIComponent(cleanKeyword)}&language=ar`);
-      const fallbackData = await fallbackRes.json();
+      const fallbackData = await safeJson(fallbackRes);
       
       if (!fallbackData.search || !fallbackData.search.results) return [];
       

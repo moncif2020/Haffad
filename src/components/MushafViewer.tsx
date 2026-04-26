@@ -498,7 +498,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
               </div>
               <button 
                 onClick={() => setIsSearchOpen(false)}
-                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all outline-none"
+                className="p-2 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-full transition-all outline-none"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -531,7 +531,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           {onClose && (
             <button
               onClick={onClose}
-              className="p-2 sm:p-3.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-all focus:ring-2 focus:ring-red-500 outline-none"
+              className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
               title="خروج"
             >
               <X className="w-6 h-6 sm:w-8 sm:h-8" />
@@ -541,10 +541,10 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           <button
             onClick={handleNextPage}
             disabled={currentPage === totalPages}
-            className="p-2 sm:p-3.5 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
             title="الصفحة التالية"
           >
-            <ChevronLeft className="w-7 h-7 sm:w-10 sm:h-10 text-gray-700 dark:text-slate-200" />
+            <ChevronLeft className="w-7 h-7 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
           </button>
           
           <button
@@ -571,11 +571,11 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           </button>
         </div>
         
-        <div className="flex flex-col items-center px-4 sm:px-8">
-          <span className="text-xl sm:text-3xl font-black text-gray-800 dark:text-white font-arabic whitespace-nowrap">
+        <div className="flex flex-col items-center px-4 sm:px-8 border-x border-emerald-50 dark:border-slate-800">
+          <span className="text-xl sm:text-3xl font-black text-emerald-900 dark:text-emerald-50 font-arabic whitespace-nowrap">
             الصفحة {currentPage}
           </span>
-          <span className="text-[10px] sm:text-base text-gray-500 dark:text-slate-400 font-arabic whitespace-nowrap opacity-80">
+          <span className="text-[10px] sm:text-sm text-emerald-600/70 dark:text-emerald-400/70 font-bold font-arabic whitespace-nowrap">
             رواية ورش عن نافع
           </span>
         </div>
@@ -583,10 +583,10 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
         <button
           onClick={handlePrevPage}
           disabled={currentPage === 1}
-          className="p-2 sm:p-3.5 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
+          className="p-2 sm:p-3.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-30 transition-all focus:ring-2 focus:ring-emerald-500 outline-none"
           title="الصفحة السابقة"
         >
-          <ChevronRight className="w-7 h-7 sm:w-10 sm:h-10 text-gray-700 dark:text-slate-200" />
+          <ChevronRight className="w-7 h-7 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
         </button>
       </div>
 

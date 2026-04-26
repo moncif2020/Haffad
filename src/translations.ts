@@ -101,7 +101,7 @@ export const translations: any = {
     loadingSurahs: 'جاري تحميل قائمة السور...', startMemorizing: 'بدء الحفظ', downloadOffline: 'تنزيل للاستماع بدون إنترنت',
     downloadComplete: 'تم التنزيل بنجاح!', downloadError: 'حدث خطأ أثناء التنزيل', downloading: 'جاري التنزيل... {progress}%',
     ayah: 'آية', startDictation: 'بدء الاستماع والتلقين', listenAndMemorizeTitle: 'التلقين والاستماع',
-    ayahSearchPlaceholder: 'ابحث باسم السورة أو رقمها...',
+    ayahSearchPlaceholder: 'ابحث باسم السورة، رقمها، أو جزء من آية معينة...',
     listenAndMemorizeDesc: 'كرر النصوص والآيات لتثبيت الحفظ', dictationText: 'نص التلقين',
     aboutUs: 'من نحن', aboutDesc: 'حُفّاظ هي منصة مبتكرة مصممة لمساعدة الأطفال والكبار على حفظ القرآن الكريم والنصوص المتنوعة باستخدام الذكاء الاصطناعي وأساليب التحفيز التفاعلية.',
     privacyPolicy: 'سياسة الخصوصية', privacyDesc: 'نحن نقدر خصوصيتك. يتم معالجة تسجيلاتك الصوتية محلياً أو عبر خدمات ذكاء اصطناعي آمنة ولا يتم تخزينها بشكل دائم على خوادمنا.',

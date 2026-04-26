@@ -9,6 +9,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { landingTranslations, languages } from './landing-translations';
 import { auth, googleProvider, db } from './firebase';
+import { safeJson } from './lib/quran';
 import { signInWithPopup, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot, deleteDoc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 
@@ -146,7 +147,7 @@ export function LandingPage() {
           })
           .then(res => {
             if (!res.ok) throw new Error('Backend failed to generate token');
-            return res.json();
+            return safeJson(res);
           })
           .then(tokenData => {
             if (tokenData.customToken) {
