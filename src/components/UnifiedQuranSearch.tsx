@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Search, Check, Loader2, Book, Type } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { searchInQuran } from '../lib/quran';
+import { searchInQuran, normalizeLatin } from '../lib/quran';
 
 interface Option {
   id: number;
@@ -66,11 +66,14 @@ export const UnifiedQuranSearch: React.FC<UnifiedQuranSearchProps> = ({
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
 
-  const filteredSurahs = options.filter(opt => 
-    opt.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (opt.englishName && opt.englishName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    opt.id.toString().includes(searchTerm)
-  );
+  const filteredSurahs = options.filter(opt => {
+    const cleanSearch = normalizeLatin(searchTerm);
+    return (
+      opt.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (opt.englishName && normalizeLatin(opt.englishName).includes(cleanSearch)) ||
+      opt.id.toString().includes(searchTerm)
+    );
+  });
 
   return (
     <div className="relative w-full" ref={containerRef}>

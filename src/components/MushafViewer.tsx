@@ -7,6 +7,47 @@ import { fetchAyahs, getAudioUrl, QURAN_SURAHS } from '../lib/quran';
 import { CustomSelect } from './CustomSelect';
 import { QuranSearchInline } from './QuranSearchInline';
 
+const MushafHeader = ({ surahName, surahEnglish, juz, lang }: { surahName: string, surahEnglish: string, juz: number, lang: string }) => (
+  <div className="w-full flex items-center justify-between px-4 py-2 bg-transparent pointer-events-none select-none z-max" dir="rtl">
+    <div className="flex flex-col items-center portrait:items-start min-w-[80px]">
+      <span className="text-[#8b6b4e] font-bold text-sm sm:text-lg font-sans">{surahEnglish}</span>
+    </div>
+    
+    <div className="relative flex items-center justify-center">
+      {/* Decorative center frame */}
+      <div className="absolute inset-0 flex items-center justify-center opacity-30">
+         <svg width="280" height="60" viewBox="0 0 280 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-[180px] sm:w-[280px] h-auto">
+            <path d="M10 30C10 15 25 2 60 2H220C255 2 270 15 270 30C270 45 255 58 220 58H60C25 58 10 45 10 30Z" stroke="#8b6b4e" strokeWidth="1"/>
+            <path d="M30 30C30 20 40 10 60 10H220C240 10 250 20 250 30C250 40 240 50 220 50H60C40 50 30 40 30 30Z" stroke="#8b6b4e" strokeWidth="0.5"/>
+            <circle cx="20" cy="30" r="4" stroke="#8b6b4e" strokeWidth="1"/>
+            <circle cx="260" cy="30" r="4" stroke="#8b6b4e" strokeWidth="1"/>
+         </svg>
+      </div>
+      <div className="relative z-10 flex flex-col items-center">
+        <span className="text-[#8b6b4e] font-arabic font-black text-xl sm:text-2xl mt-1">سورة {surahName}</span>
+      </div>
+    </div>
+
+    <div className="flex flex-col items-center portrait:items-end min-w-[80px]">
+      <span className="text-[#8b6b4e] font-bold text-sm sm:text-lg font-arabic">الجزء {juz}</span>
+      <span className="text-[10px] text-[#8b6b4e]/60 font-bold -mt-1 uppercase">{lang === 'ar' ? 'الحزب' : 'Part'} {juz * 2}</span>
+    </div>
+  </div>
+);
+
+const MushafFooter = ({ page }: { page: number }) => (
+  <div className="w-full flex items-center justify-center py-4 bg-transparent pointer-events-none select-none z-max">
+    <div className="relative flex items-center justify-center">
+      <svg width="100" height="40" viewBox="0 0 100 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-40">
+        <path d="M10 20C10 10 20 2 50 2C80 2 90 10 90 20C90 30 80 38 50 38C20 38 10 30 10 20Z" stroke="#8b6b4e" strokeWidth="1.5"/>
+        <circle cx="5" cy="20" r="2" fill="#8b6b4e"/>
+        <circle cx="95" cy="20" r="2" fill="#8b6b4e"/>
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[#8b6b4e] font-black text-lg sm:text-xl font-sans mt-0.5">{page}</span>
+    </div>
+  </div>
+);
+
 interface MushafViewerProps {
   initialPage?: number;
   onClose?: () => void;
@@ -29,6 +70,26 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
   const [focusedAyah, setFocusedAyah] = useState<{surah: number, ayah: number} | null>(null);
 
   const totalPages = 604;
+
+  const getPageMetadata = (page: number) => {
+    // Find the first surah that appears on this page
+    const surah = quranMetadata.find(s => s.ayahPages.includes(page));
+    
+    // Calculate Juz (roughly based on standard page boundaries)
+    // Most Juz are 20 pages, Juz 1 is 21, Juz 30 is 23
+    let juz = 1;
+    if (page > 581) juz = 30;
+    else if (page > 21) juz = Math.ceil((page - 21) / 20) + 1;
+    else juz = 1;
+
+    return {
+      surahName: surah ? surah.name.replace('سُورَةُ ', '') : '',
+      surahEnglish: surah ? QURAN_SURAHS[surah.number - 1]?.englishName || '' : '',
+      juz: juz
+    };
+  };
+
+  const pageMeta = getPageMetadata(currentPage);
 
   useEffect(() => {
     // Check if all pages are downloaded
@@ -445,23 +506,29 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
             <X size={24} className="relative z-10 font-bold" />
           </button>
 
-          <div className="flex-1 w-full h-full landscape:h-auto relative overflow-hidden landscape:overflow-y-auto flex flex-col items-center justify-center landscape:justify-start p-0">
-            {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            )}
-            {imageSrc && (
-              <>
-              <img
-                src={imageSrc}
-                alt={`صفحة ${currentPage} من المصحف`}
-                className="w-full h-auto portrait:w-auto portrait:max-h-full object-contain animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,196,140,0.1)]"
-                dir="rtl"
-                onClick={(e) => e.stopPropagation()}
-              />
-              </>
-            )}
+          <div className="flex-1 w-full h-full landscape:h-auto relative overflow-hidden landscape:overflow-y-auto flex flex-col items-center justify-between landscape:justify-start p-0">
+            {/* Header Content */}
+            <MushafHeader surahName={pageMeta.surahName} surahEnglish={pageMeta.surahEnglish} juz={pageMeta.juz} lang={lang} />
+
+            <div className="flex-1 w-full flex items-center justify-center relative">
+              {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                  <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+              {imageSrc && (
+                <img
+                  src={imageSrc}
+                  alt={`صفحة ${currentPage} من المصحف`}
+                  className="w-full h-auto portrait:w-auto portrait:max-h-[85vh] object-contain animate-in fade-in zoom-in duration-300 shadow-[0_0_50px_rgba(0,196,140,0.1)]"
+                  dir="rtl"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
+            </div>
+
+            {/* Footer Content */}
+            <MushafFooter page={currentPage} />
           </div>
           
           {/* Navigation Overlay for Fullscreen */}
@@ -597,16 +664,22 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           </div>
         )}
         {imageSrc && (
-          <div className="w-full flex-1 landscape:h-auto p-2 sm:p-6 flex flex-col items-center justify-center landscape:justify-start">
-            <img
-              src={imageSrc}
-              alt={`صفحة ${currentPage} من المصحف`}
-              className="w-full h-auto portrait:w-auto portrait:max-h-full object-contain cursor-pointer transition-transform duration-500 group-hover:scale-[1.02] shadow-2xl rounded-lg"
-              onLoad={() => setIsLoading(false)}
-              onError={() => setIsLoading(false)}
-              onClick={() => setIsFullscreen(true)}
-              dir="rtl"
-            />
+          <div className="w-full flex-1 landscape:h-auto p-2 sm:px-6 sm:py-2 flex flex-col items-center justify-between landscape:justify-start">
+            <MushafHeader surahName={pageMeta.surahName} surahEnglish={pageMeta.surahEnglish} juz={pageMeta.juz} lang={lang} />
+            
+            <div className="flex-1 flex items-center justify-center">
+              <img
+                src={imageSrc}
+                alt={`صفحة ${currentPage} من المصحف`}
+                className="w-full h-auto portrait:w-auto portrait:max-h-[70vh] landscape:max-h-none object-contain cursor-pointer transition-transform duration-500 group-hover:scale-[1.01] shadow-2xl rounded-lg"
+                onLoad={() => setIsLoading(false)}
+                onError={() => setIsLoading(false)}
+                onClick={() => setIsFullscreen(true)}
+                dir="rtl"
+              />
+            </div>
+
+            <MushafFooter page={currentPage} />
           </div>
         )}
         

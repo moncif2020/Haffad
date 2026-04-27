@@ -251,6 +251,14 @@ export const isRangeDownloaded = async (surahNum: number | null, from: number | 
 let fullQuranSearchIndex: any[] | null = null;
 let isFetchingIndex = false;
 
+// Helper to normalize English/Latin text (remove hyphens, spaces, and single quotes)
+export const normalizeLatin = (text: string): string => {
+  if (!text) return "";
+  return text.toLowerCase()
+    .replace(/[-\s']/g, "")
+    .trim();
+};
+
 // Helper to normalize Arabic text (remove Tashkeel and unify letters)
 export const normalizeArabic = (text: string): string => {
   if (!text) return "";
