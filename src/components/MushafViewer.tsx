@@ -7,43 +7,49 @@ import { fetchAyahs, getAudioUrl, QURAN_SURAHS } from '../lib/quran';
 import { CustomSelect } from './CustomSelect';
 import { QuranSearchInline } from './QuranSearchInline';
 
-const MushafHeader = ({ surahName, surahEnglish, juz, lang }: { surahName: string, surahEnglish: string, juz: number, lang: string }) => (
-  <div className="w-full flex items-center justify-between px-4 py-2 bg-transparent pointer-events-none select-none z-max" dir="rtl">
-    <div className="flex flex-col items-center portrait:items-start min-w-[80px]">
-      <span className="text-[#8b6b4e] font-bold text-sm sm:text-lg font-sans">{surahEnglish}</span>
-    </div>
+const MushafHeader = ({ surahName, surahEnglish, lang }: { surahName: string, surahEnglish: string, lang: string }) => (
+  <div className="w-full flex items-center justify-between px-6 py-2 bg-transparent pointer-events-none select-none z-max" dir="rtl">
+    {/* Visual Right Side - Empty for close button */}
+    <div className="min-w-[60px]"></div>
     
+    {/* Center - Arabic Surah Name */}
     <div className="relative flex items-center justify-center">
-      {/* Decorative center frame */}
-      <div className="absolute inset-0 flex items-center justify-center opacity-30">
-         <svg width="280" height="60" viewBox="0 0 280 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-[180px] sm:w-[280px] h-auto">
-            <path d="M10 30C10 15 25 2 60 2H220C255 2 270 15 270 30C270 45 255 58 220 58H60C25 58 10 45 10 30Z" stroke="#8b6b4e" strokeWidth="1"/>
-            <path d="M30 30C30 20 40 10 60 10H220C240 10 250 20 250 30C250 40 240 50 220 50H60C40 50 30 40 30 30Z" stroke="#8b6b4e" strokeWidth="0.5"/>
-            <circle cx="20" cy="30" r="4" stroke="#8b6b4e" strokeWidth="1"/>
-            <circle cx="260" cy="30" r="4" stroke="#8b6b4e" strokeWidth="1"/>
+      <div className="absolute inset-0 flex items-center justify-center opacity-20">
+         <svg width="220" height="40" viewBox="0 0 220 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-[120px] sm:w-[180px] h-auto">
+            <path d="M5 20C5 10 15 2 45 2H175C205 2 215 10 215 20C215 30 205 38 175 38H45C15 38 5 30 5 20Z" stroke="#8b6b4e" strokeWidth="0.8"/>
+            <path d="M15 20C15 12 25 6 45 6H175C195 6 205 12 205 20C205 28 195 34 175 34H45C25 34 15 28 15 20Z" stroke="#8b6b4e" strokeWidth="0.4"/>
          </svg>
       </div>
       <div className="relative z-10 flex flex-col items-center">
-        <span className="text-[#8b6b4e] font-arabic font-black text-xl sm:text-2xl mt-1">سورة {surahName}</span>
+        <span className="text-[#8b6b4e] font-arabic font-bold text-base sm:text-lg">سورة {surahName}</span>
       </div>
     </div>
 
-    <div className="flex flex-col items-center portrait:items-end min-w-[80px]">
-      <span className="text-[#8b6b4e] font-bold text-sm sm:text-lg font-arabic">الجزء {juz}</span>
-      <span className="text-[10px] text-[#8b6b4e]/60 font-bold -mt-1 uppercase">{lang === 'ar' ? 'الحزب' : 'Part'} {juz * 2}</span>
+    {/* Visual Left Side - Latin Surah Name */}
+    <div className="flex flex-col items-end min-w-[60px]">
+      <span className="text-[#8b6b4e] font-bold text-[10px] sm:text-sm font-sans tracking-tight">{surahEnglish}</span>
     </div>
   </div>
 );
 
-const MushafFooter = ({ page }: { page: number }) => (
-  <div className="w-full flex items-center justify-center py-4 bg-transparent pointer-events-none select-none z-max">
-    <div className="relative flex items-center justify-center">
-      <svg width="100" height="40" viewBox="0 0 100 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-40">
-        <path d="M10 20C10 10 20 2 50 2C80 2 90 10 90 20C90 30 80 38 50 38C20 38 10 30 10 20Z" stroke="#8b6b4e" strokeWidth="1.5"/>
-        <circle cx="5" cy="20" r="2" fill="#8b6b4e"/>
-        <circle cx="95" cy="20" r="2" fill="#8b6b4e"/>
+const MushafFooter = ({ page, juz, lang }: { page: number, juz: number, lang: string }) => (
+  <div className="w-full flex items-center justify-between px-6 py-2 bg-transparent pointer-events-none select-none z-max" dir="rtl">
+    {/* Bottom Right - Page Number (Start of line in RTL) */}
+    <div className="relative flex items-center justify-center min-w-[60px]">
+      <svg width="60" height="24" viewBox="0 0 60 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-30">
+        <path d="M10 12C10 5 15 1 30 1C45 1 50 5 50 12C50 19 45 23 30 23C15 23 10 19 10 12Z" stroke="#8b6b4e" strokeWidth="1"/>
+        <line x1="0" y1="12" x2="8" y2="12" stroke="#8b6b4e" strokeWidth="0.5"/>
+        <line x1="52" y1="12" x2="60" y2="12" stroke="#8b6b4e" strokeWidth="0.5"/>
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-[#8b6b4e] font-black text-lg sm:text-xl font-sans mt-0.5">{page}</span>
+      <span className="absolute inset-0 flex items-center justify-center text-[#8b6b4e] font-bold text-[10px] sm:text-xs font-sans mt-0.5">{page}</span>
+    </div>
+
+    <div className="flex-1"></div>
+
+    {/* Bottom Left - Juz/Hizb (End of line in RTL) */}
+    <div className="flex flex-col items-end min-w-[60px]">
+      <span className="text-[#8b6b4e] font-bold text-[10px] sm:text-sm font-arabic leading-none">الجزء {juz}</span>
+      <span className="text-[8px] sm:text-[10px] text-[#8b6b4e]/60 font-bold uppercase mt-0.5">{lang === 'ar' ? 'الحزب' : 'Part'} {juz * 2}</span>
     </div>
   </div>
 );
@@ -496,7 +502,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
           className="fixed inset-0 z-[9999] bg-[#f4f1ea] flex flex-col items-center justify-center p-0"
           onClick={() => setIsFullscreen(false)}
         >
-          {/* Close Button at Top Right with Emerald Glow - Adjusted position to clear text */}
+          {/* Close Button at Top Right with Emerald Glow - Returned to original position */}
           <button 
             onClick={(e) => { e.stopPropagation(); setIsFullscreen(false); }}
             className="absolute top-0.5 right-0.5 z-[10001] p-1.5 sm:p-2 bg-white/95 backdrop-blur-md rounded-full text-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.5)] border-2 border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.8)] transition-all active:scale-90 group overflow-hidden"
@@ -508,7 +514,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
 
           <div className="flex-1 w-full h-full landscape:h-auto relative overflow-hidden landscape:overflow-y-auto flex flex-col items-center justify-between landscape:justify-start p-0">
             {/* Header Content */}
-            <MushafHeader surahName={pageMeta.surahName} surahEnglish={pageMeta.surahEnglish} juz={pageMeta.juz} lang={lang} />
+            <MushafHeader surahName={pageMeta.surahName} surahEnglish={pageMeta.surahEnglish} lang={lang} />
 
             <div className="flex-1 w-full flex items-center justify-center relative">
               {isLoading && (
@@ -528,7 +534,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
             </div>
 
             {/* Footer Content */}
-            <MushafFooter page={currentPage} />
+            <MushafFooter page={currentPage} juz={pageMeta.juz} lang={lang} />
           </div>
           
           {/* Navigation Overlay for Fullscreen */}
@@ -665,7 +671,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
         )}
         {imageSrc && (
           <div className="w-full flex-1 landscape:h-auto p-2 sm:px-6 sm:py-2 flex flex-col items-center justify-between landscape:justify-start">
-            <MushafHeader surahName={pageMeta.surahName} surahEnglish={pageMeta.surahEnglish} juz={pageMeta.juz} lang={lang} />
+            <MushafHeader surahName={pageMeta.surahName} surahEnglish={pageMeta.surahEnglish} lang={lang} />
             
             <div className="flex-1 flex items-center justify-center">
               <img
@@ -679,7 +685,7 @@ export function MushafViewer({ initialPage = 1, onClose, lang = 'ar' }: MushafVi
               />
             </div>
 
-            <MushafFooter page={currentPage} />
+            <MushafFooter page={currentPage} juz={pageMeta.juz} lang={lang} />
           </div>
         )}
         
